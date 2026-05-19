@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import type { BestScoreRecord } from './highScores'
 import type { PuzzleScore } from './score'
 
@@ -22,6 +23,19 @@ export function WinModal({
   isNewBest = false,
   onNextPuzzle,
 }: WinModalProps) {
+  // Wire Escape→close while the modal is open. Window-level listener fires
+  // regardless of focus, so the user does not need to click into the modal
+  // before pressing Escape. Cleanup detaches the listener when the modal
+  // closes or unmounts so background pages don't observe stray keydowns.
+  useEffect(() => {
+    if (!open) return
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [open, onClose])
+
   if (!open) return null
   return (
     <div className="win-modal-overlay" onClick={onClose} role="dialog" aria-modal="true">
