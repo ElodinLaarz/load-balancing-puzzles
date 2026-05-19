@@ -3,7 +3,7 @@ import { Application, Container, Graphics, Text, TextStyle } from 'pixi.js'
 import type { BeltTier, Cell, Dir, Grid } from '../sim/types'
 import { idx } from '../sim/types'
 import type { FlowGrid, SinkResult } from '../sim/solve'
-import { applyScroll, nextScroll, type PanOrigin } from './pan'
+import { applyScroll, exceedsTapThreshold, nextScroll, type PanOrigin } from './pan'
 import { previewCellSpec } from './previewCell'
 
 export interface BoardProps {
@@ -201,16 +201,24 @@ export function PixiBoard({
   }, [ready, hover, placementDir, placementTier, cellSize, grid])
 
   // DOM-level handlers for paint/zoom: simpler than Pixi events for drag tracking.
-  function cellFromEvent(e: React.MouseEvent | MouseEvent): { x: number; y: number } | null {
+  // Shared core: derive a cell from any client-space point (mouse or touch).
+  function cellFromClient(
+    clientX: number,
+    clientY: number,
+  ): { x: number; y: number } | null {
     const host = hostRef.current
     if (!host) return null
     const rect = host.getBoundingClientRect()
-    const lx = ((e.clientX - rect.left) / rect.width) * grid.w
-    const ly = ((e.clientY - rect.top) / rect.height) * grid.h
+    const lx = ((clientX - rect.left) / rect.width) * grid.w
+    const ly = ((clientY - rect.top) / rect.height) * grid.h
     const cx = Math.floor(lx)
     const cy = Math.floor(ly)
     if (cx < 0 || cy < 0 || cx >= grid.w || cy >= grid.h) return null
     return { x: cx, y: cy }
+  }
+
+  function cellFromEvent(e: React.MouseEvent | MouseEvent): { x: number; y: number } | null {
+    return cellFromClient(e.clientX, e.clientY)
   }
 
   // Smart-tile drag state: track last cell touched and re-orient as the path turns.
@@ -229,8 +237,125 @@ export function PixiBoard({
     spaceDownRef.current = spaceDown
   }, [spaceDown])
 
+  // Touch gesture state. A single-finger drag pans the board (mirrors
+  // middle-mouse pan); a single-finger touch with movement under the tap
+  // threshold ends as a tap that places one cell. Any time a second finger
+  // lands, the gesture is cancelled (multi-touch is reserved for future
+  // pinch-zoom and must NOT trigger pan or paint side effects).
+  //
+  // Pinch-zoom and long-press erase are out of scope for this change.
+  // `null` means "no active single-finger gesture" — that covers both the
+  // idle state and the post-multi-touch cancelled state.
+  const touchGestureRef = useRef<{
+    start: { x: number; y: number; scrollLeft: number; scrollTop: number }
+    moved: boolean
+  } | null>(null)
+
   function placeAt(x: number, y: number, dir: Dir | null, button: number) {
     placeRef.current?.(x, y, dir, button)
+  }
+
+  function handleTouchStart(e: React.TouchEvent) {
+    const scroller = hostRef.current?.parentElement
+    if (!scroller) return
+    e.preventDefault()
+    if (e.touches.length >= 2) {
+      // Multi-finger: invalidate any in-flight single-finger gesture without
+      // committing a tap or finishing a pan.
+      touchGestureRef.current = null
+      if (panningRef.current) {
+        panningRef.current = false
+        panOriginRef.current = null
+        setPanning(false)
+      }
+      return
+    }
+    const t = e.touches[0]
+    touchGestureRef.current = {
+      start: {
+        x: t.clientX,
+        y: t.clientY,
+        scrollLeft: scroller.scrollLeft,
+        scrollTop: scroller.scrollTop,
+      },
+      moved: false,
+    }
+  }
+
+  function handleTouchMove(e: React.TouchEvent) {
+    const gesture = touchGestureRef.current
+    if (!gesture) return
+    if (e.touches.length >= 2) {
+      // Second finger arrived mid-gesture: abandon. Don't pan, don't tap.
+      touchGestureRef.current = null
+      if (panningRef.current) {
+        panningRef.current = false
+        panOriginRef.current = null
+        setPanning(false)
+      }
+      e.preventDefault()
+      return
+    }
+    const t = e.touches[0]
+    if (!gesture.moved) {
+      if (
+        !exceedsTapThreshold(
+          { x: gesture.start.x, y: gesture.start.y },
+          { x: t.clientX, y: t.clientY },
+        )
+      ) {
+        // Still inside the slop radius — treat as held tap so far.
+        return
+      }
+      // Upgrade to a pan. Hand off to the existing pan machinery so cursor
+      // styling and cleanup mirror the mouse path.
+      gesture.moved = true
+      panningRef.current = true
+      panOriginRef.current = {
+        x: gesture.start.x,
+        y: gesture.start.y,
+        scrollLeft: gesture.start.scrollLeft,
+        scrollTop: gesture.start.scrollTop,
+      }
+      setPanning(true)
+    }
+    e.preventDefault()
+    const scroller = hostRef.current?.parentElement
+    if (scroller && panOriginRef.current) {
+      applyScroll(
+        scroller,
+        nextScroll(panOriginRef.current, { clientX: t.clientX, clientY: t.clientY }),
+      )
+    }
+  }
+
+  function handleTouchEnd(e: React.TouchEvent) {
+    const gesture = touchGestureRef.current
+    // Only act when the LAST finger lifts. Earlier lifts during a multi-touch
+    // gesture (which was already cancelled in start/move) leave state alone.
+    if (e.touches.length > 0) return
+    touchGestureRef.current = null
+    if (panningRef.current) {
+      panningRef.current = false
+      panOriginRef.current = null
+      setPanning(false)
+      return
+    }
+    if (!gesture || gesture.moved) return
+    const t = e.changedTouches[0]
+    if (!t) return
+    const c = cellFromClient(t.clientX, t.clientY)
+    if (!c) return
+    placeAt(c.x, c.y, placementDirRef.current, 0)
+  }
+
+  function handleTouchCancel() {
+    touchGestureRef.current = null
+    if (panningRef.current) {
+      panningRef.current = false
+      panOriginRef.current = null
+      setPanning(false)
+    }
   }
 
   function handleDown(e: React.MouseEvent) {
@@ -348,6 +473,10 @@ export function PixiBoard({
       onMouseMove={handleMove}
       onMouseUp={handleUp}
       onMouseLeave={handleLeave}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      onTouchCancel={handleTouchCancel}
       onContextMenu={(e) => e.preventDefault()}
       onWheel={handleWheel}
       // Suppress browser middle-click auto-scroll on platforms that bind it.
