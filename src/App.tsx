@@ -5,6 +5,8 @@ import { checkSinks, solveFlow, type FlowGrid, type SinkResult } from './sim/sol
 import type { BeltTier, Cell, Dir } from './sim/types'
 import { idx } from './sim/types'
 import { tierForKey } from './ui/hotkeys'
+import { WinModal } from './ui/WinModal'
+import { scoreGrid } from './ui/score'
 import './App.css'
 
 const PixiBoard = lazy(() => import('./ui/PixiBoard'))
@@ -19,6 +21,7 @@ export default function App() {
   const [tier, setTier] = useState<BeltTier>('yellow')
   const [flows, setFlows] = useState<FlowGrid | null>(null)
   const [results, setResults] = useState<SinkResult[] | null>(null)
+  const [modalOpen, setModalOpen] = useState(false)
   const hoverRef = useRef<{ x: number; y: number } | null>(null)
 
   const allowedTiers = puzzle.allowedTiers ?? (['yellow', 'red', 'blue'] as BeltTier[])
@@ -29,6 +32,7 @@ export default function App() {
     setGrid(gridFromPuzzle(p))
     setFlows(null)
     setResults(null)
+    setModalOpen(false)
   }
 
   function handlePlace(x: number, y: number, placeDir: Dir | null, button: number) {
@@ -49,14 +53,17 @@ export default function App() {
 
   function run() {
     const f = solveFlow(grid)
+    const r = checkSinks(grid, f)
     setFlows(f)
-    setResults(checkSinks(grid, f))
+    setResults(r)
+    if (r.every((s) => s.ok)) setModalOpen(true)
   }
 
   function reset() {
     setGrid(gridFromPuzzle(puzzle))
     setFlows(null)
     setResults(null)
+    setModalOpen(false)
   }
 
   const solved = useMemo(() => results && results.every((r) => r.ok), [results])
@@ -183,6 +190,13 @@ export default function App() {
           />
         </Suspense>
       </main>
+
+      <WinModal
+        open={modalOpen}
+        puzzleTitle={puzzle.title}
+        score={scoreGrid(grid)}
+        onClose={() => setModalOpen(false)}
+      />
     </div>
   )
 }

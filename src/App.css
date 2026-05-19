@@ -68,3 +68,25 @@ button.on { background: #2563eb; border-color: #2563eb; }
 }
 
 footer { margin-top: 24px; font-size: 11px; color: #5a6173; }
+
+.win-modal-overlay {
+  position: fixed; inset: 0; background: rgba(11,14,21,0.75);
+  display: flex; align-items: center; justify-content: center; z-index: 50;
+}
+.win-modal {
+  background: #161b25; border: 1px solid #2a3142; border-radius: 12px;
+  padding: 24px; min-width: 280px; box-shadow: 0 12px 32px rgba(0,0,0,0.5);
+}
+.win-modal h2 { margin: 0 0 16px; }
+.win-modal dl {
+  display: grid; grid-template-columns: auto 1fr;
+  gap: 4px 16px; margin: 0 0 16px;
+}
+.win-modal dt {
+  color: #8a93a6; font-size: 12px;
+  text-transform: uppercase; letter-spacing: 0.06em;
+  align-self: center;
+}
+.win-modal dd {
+  margin: 0; font-family: ui-monospace, monospace; font-size: 16px;
+}
