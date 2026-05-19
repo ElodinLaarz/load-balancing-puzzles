@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react'
 import { PUZZLES, getPuzzle } from './puzzles'
 import { gridFromPuzzle, setCell } from './sim/grid'
 import { checkSinks, solveFlow, type FlowGrid, type SinkResult } from './sim/solve'
 import type { BeltTier, Cell, Dir } from './sim/types'
 import { idx } from './sim/types'
-import { PixiBoard } from './ui/PixiBoard'
 import './App.css'
+
+const PixiBoard = lazy(() => import('./ui/PixiBoard'))
 
 const DIRS: Dir[] = ['N', 'E', 'S', 'W']
 
@@ -162,16 +163,18 @@ export default function App() {
       </aside>
 
       <main className="board-wrap">
-        <PixiBoard
-          grid={grid}
-          flows={flows}
-          sinkResults={results ?? undefined}
-          placementDir={dir}
-          onPlace={handlePlace}
-          onHoverCell={(c) => {
-            hoverRef.current = c
-          }}
-        />
+        <Suspense fallback={<div className="board-loading">Loading board…</div>}>
+          <PixiBoard
+            grid={grid}
+            flows={flows}
+            sinkResults={results ?? undefined}
+            placementDir={dir}
+            onPlace={handlePlace}
+            onHoverCell={(c) => {
+              hoverRef.current = c
+            }}
+          />
+        </Suspense>
       </main>
     </div>
   )
