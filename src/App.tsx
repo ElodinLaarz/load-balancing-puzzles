@@ -2,9 +2,10 @@ import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react'
 import { PUZZLES, getPuzzle } from './puzzles'
 import { gridFromPuzzle, setCell } from './sim/grid'
 import { checkSinks, solveFlow, type FlowGrid, type SinkResult } from './sim/solve'
-import type { BeltTier, Cell, Dir } from './sim/types'
+import type { BeltTier, Cell, Dir, Grid } from './sim/types'
 import { idx } from './sim/types'
 import { tierForKey } from './ui/hotkeys'
+import { initHistory, push as pushHistory, redo, undo } from './ui/history'
 import { WinModal } from './ui/WinModal'
 import { scoreGrid } from './ui/score'
 import './App.css'
@@ -16,7 +17,8 @@ const DIRS: Dir[] = ['N', 'E', 'S', 'W']
 export default function App() {
   const [puzzleId, setPuzzleId] = useState(PUZZLES[0].id)
   const puzzle = getPuzzle(puzzleId)!
-  const [grid, setGrid] = useState(() => gridFromPuzzle(puzzle))
+  const [history, setHistory] = useState(() => initHistory(gridFromPuzzle(puzzle)))
+  const grid = history.present
   const [dir, setDir] = useState<Dir>('E')
   const [tier, setTier] = useState<BeltTier>('yellow')
   const [flows, setFlows] = useState<FlowGrid | null>(null)
@@ -26,17 +28,25 @@ export default function App() {
 
   const allowedTiers = puzzle.allowedTiers ?? (['yellow', 'red', 'blue'] as BeltTier[])
 
+  function applyGrid(fn: (g: Grid) => Grid) {
+    setHistory((h) => {
+      const next = fn(h.present)
+      if (next === h.present) return h
+      return pushHistory(h, next)
+    })
+  }
+
   function changePuzzle(id: string) {
     const p = getPuzzle(id)!
     setPuzzleId(id)
-    setGrid(gridFromPuzzle(p))
+    setHistory(initHistory(gridFromPuzzle(p)))
     setFlows(null)
     setResults(null)
     setModalOpen(false)
   }
 
   function handlePlace(x: number, y: number, placeDir: Dir | null, button: number) {
-    setGrid((g) => {
+    applyGrid((g) => {
       const existing = g.cells[idx(g, x, y)]
       if (
         existing &&
@@ -64,7 +74,7 @@ export default function App() {
   }
 
   function reset() {
-    setGrid(gridFromPuzzle(puzzle))
+    setHistory(initHistory(gridFromPuzzle(puzzle)))
     setFlows(null)
     setResults(null)
     setModalOpen(false)
@@ -75,6 +85,23 @@ export default function App() {
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'z' || e.key === 'Z')) {
+        e.preventDefault()
+        setHistory(undo)
+        setFlows(null)
+        setResults(null)
+        return
+      }
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        ((e.shiftKey && (e.key === 'z' || e.key === 'Z')) || e.key === 'y' || e.key === 'Y')
+      ) {
+        e.preventDefault()
+        setHistory(redo)
+        setFlows(null)
+        setResults(null)
+        return
+      }
       const nextTier = tierForKey(e.key, allowedTiers)
       if (nextTier) {
         setTier(nextTier)
@@ -87,7 +114,7 @@ export default function App() {
         if (hover) {
           let rotated = false
           let newDir: Dir | null = null
-          setGrid((g) => {
+          applyGrid((g) => {
             const c = g.cells[idx(g, hover.x, hover.y)]
             if (!c || c.kind === 'source' || c.kind === 'sink' || c.kind === 'obstacle') return g
             rotated = true
@@ -128,7 +155,7 @@ export default function App() {
         <p className="desc">{puzzle.description}</p>
 
         <p className="hint">
-          Left-click drag: paint belts. Right-click: erase. Scroll: zoom. R: rotate (Shift+R reverse) · 1/2/3: tier · Space+drag or middle-click: pan · ghost preview shows next placement.
+          Left-click drag: paint belts. Right-click: erase. Scroll: zoom. R: rotate (Shift+R reverse) · 1/2/3: tier · Space+drag or middle-click: pan · ghost preview shows next placement · Ctrl+Z undo · Ctrl+Shift+Z redo.
         </p>
 
         <h2>Direction</h2>
