@@ -31,7 +31,7 @@ function readAll(): Store {
     const raw = ls.getItem(STORAGE_KEY)
     if (!raw) return {}
     const parsed = JSON.parse(raw) as unknown
-    if (!parsed || typeof parsed !== 'object') return {}
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
     return parsed as Store
   } catch {
     return {}
@@ -59,7 +59,10 @@ export function saveIfBest(
   puzzleId: string,
   score: PuzzleScore,
 ): { saved: boolean; record: BestScoreRecord } {
-  const existing = getBest(puzzleId)
+  // Read once: avoids a redundant localStorage hit + JSON parse, and keeps
+  // the read/write pair atomic from the caller's POV.
+  const store = readAll()
+  const existing = store[puzzleId]
 
   // Tie: do NOT overwrite — preserve earlier ts.
   if (existing && score.total >= existing.total) {
@@ -73,7 +76,6 @@ export function saveIfBest(
     ts: Date.now(),
   }
 
-  const store = readAll()
   store[puzzleId] = record
   const wrote = writeAll(store)
   return { saved: wrote, record }
