@@ -29,11 +29,16 @@ export default function App() {
     setResults(null)
   }
 
-  function handlePaint(x: number, y: number, button: number) {
+  function handlePlace(x: number, y: number, placeDir: Dir | null, button: number) {
     setGrid((g) => {
       const existing = g.cells[idx(g, x, y)]
       if (existing && (existing.kind === 'source' || existing.kind === 'sink')) return g
-      const cell: Cell | null = button === 2 ? null : { kind: 'belt', dir, tier }
+      if (button === 2) return setCell(g, x, y, null)
+      const useDir = placeDir ?? dir
+      // Preserve tier of an existing belt when re-orienting mid-drag; new placements
+      // use the active tier.
+      const useTier = existing?.kind === 'belt' ? (existing.tier ?? tier) : tier
+      const cell: Cell = { kind: 'belt', dir: useDir, tier: useTier }
       return setCell(g, x, y, cell)
     })
     setFlows(null)
@@ -161,7 +166,8 @@ export default function App() {
           grid={grid}
           flows={flows}
           sinkResults={results ?? undefined}
-          onCellPaint={handlePaint}
+          placementDir={dir}
+          onPlace={handlePlace}
           onHoverCell={(c) => {
             hoverRef.current = c
           }}

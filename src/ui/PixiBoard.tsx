@@ -9,8 +9,13 @@ export interface BoardProps {
   cellSize?: number
   flows?: FlowGrid | null
   sinkResults?: SinkResult[]
-  /** button: 0 = left/paint, 2 = right/erase. */
-  onCellPaint?: (x: number, y: number, button: number) => void
+  /** Active placement direction; used for the first cell of a drag before motion exists. */
+  placementDir: Dir
+  /**
+   * Called per cell during paint/erase. For paint, `dir` is the smart-tile direction
+   * (motion-aware); for erase, `dir` is null.
+   */
+  onPlace?: (x: number, y: number, dir: Dir | null, button: number) => void
   onHoverCell?: (cell: { x: number; y: number } | null) => void
 }
 
@@ -27,14 +32,24 @@ const DIR_ANGLE: Record<Dir, number> = { E: 0, S: Math.PI / 2, W: Math.PI, N: -M
 const MIN_SCALE = 0.3
 const MAX_SCALE = 3
 
-export function PixiBoard({ grid, cellSize = 48, flows, sinkResults, onCellPaint, onHoverCell }: BoardProps) {
+export function PixiBoard({
+  grid,
+  cellSize = 48,
+  flows,
+  sinkResults,
+  placementDir,
+  onPlace,
+  onHoverCell,
+}: BoardProps) {
   const hostRef = useRef<HTMLDivElement>(null)
   const appRef = useRef<Application | null>(null)
   const layerRef = useRef<Container | null>(null)
-  const paintRef = useRef(onCellPaint)
-  paintRef.current = onCellPaint
+  const placeRef = useRef(onPlace)
+  placeRef.current = onPlace
   const hoverRef = useRef(onHoverCell)
   hoverRef.current = onHoverCell
+  const placementDirRef = useRef(placementDir)
+  placementDirRef.current = placementDir
   const [ready, setReady] = useState(false)
   const [scale, setScale] = useState(1)
 
@@ -133,30 +148,61 @@ export function PixiBoard({ grid, cellSize = 48, flows, sinkResults, onCellPaint
     return { x: cx, y: cy }
   }
 
-  const paintingRef = useRef<number | null>(null) // active button
-  const lastCellRef = useRef<string | null>(null)
+  // Smart-tile drag state: track last cell touched and re-orient as the path turns.
+  const paintingRef = useRef<number | null>(null)
+  const lastCellRef = useRef<{ x: number; y: number } | null>(null)
+
+  function placeAt(x: number, y: number, dir: Dir | null, button: number) {
+    placeRef.current?.(x, y, dir, button)
+  }
 
   function handleDown(e: React.MouseEvent) {
     if (e.button !== 0 && e.button !== 2) return
     e.preventDefault()
     paintingRef.current = e.button
-    lastCellRef.current = null
     const c = cellFromEvent(e)
-    if (c) {
-      lastCellRef.current = `${c.x},${c.y}`
-      paintRef.current?.(c.x, c.y, e.button)
+    if (!c) {
+      lastCellRef.current = null
+      return
     }
+    lastCellRef.current = c
+    // First cell uses held placement direction (Factorio behavior).
+    placeAt(c.x, c.y, e.button === 2 ? null : placementDirRef.current, e.button)
   }
 
   function handleMove(e: React.MouseEvent) {
     const c = cellFromEvent(e)
     hoverRef.current?.(c)
-    if (paintingRef.current === null) return
-    if (!c) return
-    const key = `${c.x},${c.y}`
-    if (key === lastCellRef.current) return
-    lastCellRef.current = key
-    paintRef.current?.(c.x, c.y, paintingRef.current)
+    const button = paintingRef.current
+    if (button === null || !c) return
+    const last = lastCellRef.current
+    if (!last) {
+      lastCellRef.current = c
+      placeAt(c.x, c.y, button === 2 ? null : placementDirRef.current, button)
+      return
+    }
+    if (last.x === c.x && last.y === c.y) return
+    // Walk an orthogonal path from `last` to `c`. Dominant axis first.
+    const path = orthoPath(last, c)
+    let prev = last
+    for (const step of path) {
+      const dir = dirBetween(prev, step)
+      if (!dir) {
+        prev = step
+        continue
+      }
+      if (button === 0) {
+        // Re-orient the previous cell to face the new outgoing direction.
+        // For the very first step, this updates the cell placed on mousedown.
+        placeAt(prev.x, prev.y, dir, 0)
+        // Place the new cell facing the same direction (will be re-oriented if drag turns).
+        placeAt(step.x, step.y, dir, 0)
+      } else {
+        placeAt(step.x, step.y, null, 2)
+      }
+      prev = step
+    }
+    lastCellRef.current = c
   }
 
   function handleUp() {
@@ -187,6 +233,53 @@ export function PixiBoard({ grid, cellSize = 48, flows, sinkResults, onCellPaint
       onWheel={handleWheel}
     />
   )
+}
+
+type Pt = { x: number; y: number }
+
+function dirBetween(a: Pt, b: Pt): Dir | null {
+  if (b.x === a.x + 1 && b.y === a.y) return 'E'
+  if (b.x === a.x - 1 && b.y === a.y) return 'W'
+  if (b.x === a.x && b.y === a.y + 1) return 'S'
+  if (b.x === a.x && b.y === a.y - 1) return 'N'
+  return null
+}
+
+/**
+ * Orthogonal step path from `from` (exclusive) to `to` (inclusive). When the cursor
+ * jumps diagonally, walk the dominant axis first then the other. Matches Factorio's
+ * "drag straight, then turn" feel.
+ */
+function orthoPath(from: Pt, to: Pt): Pt[] {
+  const dx = to.x - from.x
+  const dy = to.y - from.y
+  const sx = Math.sign(dx)
+  const sy = Math.sign(dy)
+  const ax = Math.abs(dx)
+  const ay = Math.abs(dy)
+  const path: Pt[] = []
+  let cx = from.x
+  let cy = from.y
+  if (ax >= ay) {
+    for (let i = 0; i < ax; i++) {
+      cx += sx
+      path.push({ x: cx, y: cy })
+    }
+    for (let i = 0; i < ay; i++) {
+      cy += sy
+      path.push({ x: cx, y: cy })
+    }
+  } else {
+    for (let i = 0; i < ay; i++) {
+      cy += sy
+      path.push({ x: cx, y: cy })
+    }
+    for (let i = 0; i < ax; i++) {
+      cx += sx
+      path.push({ x: cx, y: cy })
+    }
+  }
+  return path
 }
 
 function drawCell(c: Cell, x: number, y: number, s: number, flow: Record<string, number> | null) {
