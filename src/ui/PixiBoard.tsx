@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Application, Container, Graphics, Text, TextStyle } from 'pixi.js'
 import type { Cell, Dir, Grid } from '../sim/types'
 import { idx } from '../sim/types'
@@ -28,8 +28,8 @@ export function PixiBoard({ grid, cellSize = 48, flows, sinkResults, onCellClick
   const layerRef = useRef<Container | null>(null)
   const clickRef = useRef(onCellClick)
   clickRef.current = onCellClick
+  const [ready, setReady] = useState(false)
 
-  // Mount Pixi app once.
   useEffect(() => {
     const host = hostRef.current
     if (!host) return
@@ -39,7 +39,8 @@ export function PixiBoard({ grid, cellSize = 48, flows, sinkResults, onCellClick
       await app.init({
         background: 0x141821,
         antialias: true,
-        resizeTo: host,
+        width: grid.w * cellSize,
+        height: grid.h * cellSize,
       })
       if (cancelled) {
         app.destroy(true)
@@ -51,75 +52,65 @@ export function PixiBoard({ grid, cellSize = 48, flows, sinkResults, onCellClick
       appRef.current = app
       layerRef.current = layer
       app.canvas.style.display = 'block'
+      setReady(true)
     })()
     return () => {
       cancelled = true
+      setReady(false)
       if (appRef.current) {
         appRef.current.destroy(true, { children: true })
         appRef.current = null
         layerRef.current = null
       }
     }
-  }, [])
+  }, [grid.w, grid.h, cellSize])
 
-  // Re-render whenever inputs change.
   useEffect(() => {
     const app = appRef.current
     const layer = layerRef.current
-    if (!app || !layer) {
-      // App may not be ready yet; schedule retry on next tick.
-      const t = setTimeout(() => {
-        if (appRef.current && layerRef.current) draw()
-      }, 50)
-      return () => clearTimeout(t)
+    if (!ready || !app || !layer) return
+
+    layer.removeChildren()
+
+    const bg = new Graphics()
+    for (let y = 0; y < grid.h; y++) {
+      for (let x = 0; x < grid.w; x++) {
+        bg.rect(x * cellSize, y * cellSize, cellSize, cellSize)
+      }
     }
-    draw()
+    bg.fill({ color: 0x1c2230 }).stroke({ color: 0x2a3142, width: 1 })
+    layer.addChild(bg)
 
-    function draw() {
-      const layer = layerRef.current!
-      layer.removeChildren()
-
-      const bg = new Graphics()
-      for (let y = 0; y < grid.h; y++) {
-        for (let x = 0; x < grid.w; x++) {
-          bg.rect(x * cellSize, y * cellSize, cellSize, cellSize)
-        }
+    for (let y = 0; y < grid.h; y++) {
+      for (let x = 0; x < grid.w; x++) {
+        const c = grid.cells[idx(grid, x, y)]
+        if (!c) continue
+        layer.addChild(drawCell(c, x, y, cellSize, flows?.[idx(grid, x, y)] ?? null))
       }
-      bg.fill({ color: 0x1c2230 }).stroke({ color: 0x2a3142, width: 1 })
-      layer.addChild(bg)
-
-      for (let y = 0; y < grid.h; y++) {
-        for (let x = 0; x < grid.w; x++) {
-          const c = grid.cells[idx(grid, x, y)]
-          if (!c) continue
-          layer.addChild(drawCell(c, x, y, cellSize, flows?.[idx(grid, x, y)] ?? null))
-        }
-      }
-
-      if (sinkResults) {
-        for (const s of sinkResults) {
-          const g = new Graphics()
-          g.rect(s.x * cellSize, s.y * cellSize, cellSize, cellSize)
-            .stroke({ color: s.ok ? 0x4ade80 : 0xef4444, width: 3 })
-          layer.addChild(g)
-        }
-      }
-
-      // Hit area for clicks.
-      const hit = new Graphics()
-      hit.rect(0, 0, grid.w * cellSize, grid.h * cellSize).fill({ color: 0xffffff, alpha: 0.001 })
-      hit.eventMode = 'static'
-      hit.on('pointerdown', (e) => {
-        const local = e.getLocalPosition(layer)
-        const cx = Math.floor(local.x / cellSize)
-        const cy = Math.floor(local.y / cellSize)
-        if (cx >= 0 && cx < grid.w && cy >= 0 && cy < grid.h) {
-          clickRef.current?.(cx, cy, e.button)
-        }
-      })
-      layer.addChild(hit)
     }
-  }, [grid, cellSize, flows, sinkResults])
+
+    if (sinkResults) {
+      for (const s of sinkResults) {
+        const g = new Graphics()
+        g.rect(s.x * cellSize, s.y * cellSize, cellSize, cellSize)
+          .stroke({ color: s.ok ? 0x4ade80 : 0xef4444, width: 3 })
+        layer.addChild(g)
+      }
+    }
+
+    const hit = new Graphics()
+    hit.rect(0, 0, grid.w * cellSize, grid.h * cellSize).fill({ color: 0xffffff, alpha: 0.001 })
+    hit.eventMode = 'static'
+    hit.on('pointerdown', (e) => {
+      const local = e.getLocalPosition(layer)
+      const cx = Math.floor(local.x / cellSize)
+      const cy = Math.floor(local.y / cellSize)
+      if (cx >= 0 && cx < grid.w && cy >= 0 && cy < grid.h) {
+        clickRef.current?.(cx, cy, e.button)
+      }
+    })
+    layer.addChild(hit)
+  }, [ready, grid, cellSize, flows, sinkResults])
 
   return <div ref={hostRef} style={{ width: grid.w * cellSize, height: grid.h * cellSize }} />
 }
@@ -143,7 +134,6 @@ function drawCell(c: Cell, x: number, y: number, s: number, flow: Record<string,
   g.rect(2, 2, s - 4, s - 4).fill({ color })
   node.addChild(g)
 
-  // Direction arrow.
   const arrow = new Graphics()
   arrow.moveTo(-s * 0.18, -s * 0.14)
   arrow.lineTo(s * 0.22, 0)
@@ -156,7 +146,6 @@ function drawCell(c: Cell, x: number, y: number, s: number, flow: Record<string,
   arrow.rotation = DIR_ANGLE[c.dir]
   node.addChild(arrow)
 
-  // Flow composition pips.
   const display = flow ?? c.feed ?? c.require
   if (display) {
     const entries = Object.entries(display).filter(([, v]) => v > 0.01)
