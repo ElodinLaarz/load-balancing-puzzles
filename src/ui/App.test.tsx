@@ -1,15 +1,29 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import App from '../App'
 import { PUZZLES } from '../puzzles'
+import type { Dir } from '../sim/types'
 
 // PixiBoard requires a real Canvas (not provided by jsdom) and pulls in pixi.js,
 // so stub it out for the UI render path. App lazy-imports './ui/PixiBoard' from
 // '../App', so the mock path must match what App actually imports.
+//
+// The stub captures the latest `onPlace` callback so tests can simulate a cell
+// placement (which would normally arrive via a Pixi pointer event on the
+// canvas). Tests retrieve it via `getLastPlace()` below.
+let lastOnPlace: ((x: number, y: number, dir: Dir | null, button: number) => void) | null = null
 vi.mock('../ui/PixiBoard', () => ({
-  default: vi.fn(() => null),
+  default: vi.fn((props: { onPlace?: (x: number, y: number, dir: Dir | null, button: number) => void }) => {
+    lastOnPlace = props.onPlace ?? null
+    return null
+  }),
 }))
+
+function getLastPlace() {
+  if (!lastOnPlace) throw new Error('PixiBoard mock has not received an onPlace callback yet')
+  return lastOnPlace
+}
 
 function getButtonByExactText(text: string) {
   const buttons = screen.getAllByRole('button')
@@ -24,6 +38,7 @@ describe('App UI smoke', () => {
   // state into later tests' initial puzzle selection — reset before each.
   beforeEach(() => {
     window.history.replaceState({}, '', window.location.pathname + window.location.search)
+    lastOnPlace = null
   })
   it('renders sidebar with the first puzzle description', async () => {
     render(<App />)
@@ -120,5 +135,34 @@ describe('App UI smoke', () => {
     expect(
       within(tierRow2).getAllByRole('button').map((b) => b.textContent),
     ).toEqual(['yellow', 'red'])
+  })
+
+  it('shows live score breakdown in the sidebar that updates as belts are placed', async () => {
+    render(<App />)
+
+    // Initial state for puzzle 01-intro: only puzzle-fixed source + sink, no
+    // player cells, so cellsUsed = 0 / tierCost = 0 / total = 0.
+    const scoreHeading = await screen.findByRole('heading', { name: 'Score' })
+    const scoreSection = scoreHeading.nextElementSibling as HTMLElement
+    expect(scoreSection).toBeTruthy()
+    expect(scoreSection.textContent).toMatch(/Cells used.*0/)
+    expect(scoreSection.textContent).toMatch(/Tier cost.*0/)
+    expect(scoreSection.textContent).toMatch(/Total.*0/)
+
+    // Simulate placing one yellow belt — mirrors a left-click on the board.
+    // PixiBoard is mocked, so we invoke the captured onPlace handler directly.
+    act(() => {
+      getLastPlace()(1, 3, 'E', 0)
+    })
+
+    // One player-placed yellow belt: cellsUsed = 1, tierCost = TIER_COST.yellow = 1,
+    // total = 2.
+    await waitFor(() => {
+      const section = screen.getByRole('heading', { name: 'Score' })
+        .nextElementSibling as HTMLElement
+      expect(section.textContent).toMatch(/Cells used.*1/)
+      expect(section.textContent).toMatch(/Tier cost.*1/)
+      expect(section.textContent).toMatch(/Total.*2/)
+    })
   })
 })
