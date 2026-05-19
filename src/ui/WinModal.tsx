@@ -10,6 +10,7 @@ export interface WinModalProps {
   previousBest?: BestScoreRecord | null
   /** True when the current score is a new personal best. */
   isNewBest?: boolean
+  onNextPuzzle?: () => void
 }
 
 export function WinModal({
@@ -19,6 +20,7 @@ export function WinModal({
   onClose,
   previousBest = null,
   isNewBest = false,
+  onNextPuzzle,
 }: WinModalProps) {
   if (!open) return null
   return (
@@ -41,6 +43,7 @@ export function WinModal({
           )}
         </dl>
         <button onClick={onClose}>Close</button>
+        {onNextPuzzle && <button onClick={onNextPuzzle}>Next puzzle →</button>}
       </div>
     </div>
   )
