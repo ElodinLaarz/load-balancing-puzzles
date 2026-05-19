@@ -7,6 +7,7 @@ import { idx } from './sim/types'
 import { tierForKey } from './ui/hotkeys'
 import { initHistory, push as pushHistory, redo, undo } from './ui/history'
 import { WinModal } from './ui/WinModal'
+import { getBest, saveIfBest, type BestScoreRecord } from './ui/highScores'
 import { scoreGrid } from './ui/score'
 import './App.css'
 
@@ -24,6 +25,8 @@ export default function App() {
   const [flows, setFlows] = useState<FlowGrid | null>(null)
   const [results, setResults] = useState<SinkResult[] | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
+  const [previousBest, setPreviousBest] = useState<BestScoreRecord | null>(null)
+  const [isNewBest, setIsNewBest] = useState(false)
   const hoverRef = useRef<{ x: number; y: number } | null>(null)
 
   const allowedTiers = puzzle.allowedTiers ?? (['yellow', 'red', 'blue'] as BeltTier[])
@@ -43,6 +46,8 @@ export default function App() {
     setFlows(null)
     setResults(null)
     setModalOpen(false)
+    setPreviousBest(null)
+    setIsNewBest(false)
   }
 
   function handlePlace(x: number, y: number, placeDir: Dir | null, button: number) {
@@ -70,7 +75,16 @@ export default function App() {
     const r = checkSinks(grid, f)
     setFlows(f)
     setResults(r)
-    if (r.every((s) => s.ok)) setModalOpen(true)
+    if (r.every((s) => s.ok)) {
+      // Capture the previous best BEFORE saving, so the modal can show what
+      // the player just beat (if anything).
+      const prev = getBest(puzzleId)
+      const score = scoreGrid(grid)
+      saveIfBest(puzzleId, score)
+      setPreviousBest(prev)
+      setIsNewBest(!prev || score.total < prev.total)
+      setModalOpen(true)
+    }
   }
 
   function reset() {
@@ -78,6 +92,8 @@ export default function App() {
     setFlows(null)
     setResults(null)
     setModalOpen(false)
+    setPreviousBest(null)
+    setIsNewBest(false)
   }
 
   const solved = useMemo(() => results && results.every((r) => r.ok), [results])
@@ -226,6 +242,8 @@ export default function App() {
         open={modalOpen}
         puzzleTitle={puzzle.title}
         score={scoreGrid(grid)}
+        previousBest={previousBest}
+        isNewBest={isNewBest}
         onClose={() => setModalOpen(false)}
       />
     </div>
