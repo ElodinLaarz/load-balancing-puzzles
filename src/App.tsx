@@ -8,6 +8,12 @@ import { debounce } from './ui/debounce'
 import { tierForKey } from './ui/hotkeys'
 import { initHistory, push as pushHistory, redo, undo } from './ui/history'
 import { nextPuzzleId } from './ui/nextPuzzle'
+import {
+  applySharedCells,
+  decodeSolution,
+  derivePlayerCells,
+  encodeSolution,
+} from './ui/share'
 import { WinModal } from './ui/WinModal'
 import { getBest, saveIfBest, type BestScoreRecord } from './ui/highScores'
 import { scoreGrid } from './ui/score'
@@ -18,15 +24,35 @@ const AUTO_RUN_DEBOUNCE_MS = 250
 
 type SimStatus = 'idle' | 'pending' | 'ok' | 'fail'
 
+/** Pull (puzzleId, grid) from the current URL hash, falling back to the first
+ * puzzle if the hash is absent, malformed, or names an unknown puzzle. */
+function initialStateFromHash(): { puzzleId: string; grid: Grid } {
+  const fallback = () => {
+    const p = PUZZLES[0]
+    return { puzzleId: p.id, grid: gridFromPuzzle(p) }
+  }
+  if (typeof window === 'undefined') return fallback()
+  try {
+    const decoded = decodeSolution(window.location.hash)
+    if (!decoded) return fallback()
+    const puzzle = getPuzzle(decoded.puzzleId)
+    if (!puzzle) return fallback()
+    return { puzzleId: puzzle.id, grid: applySharedCells(puzzle, decoded.cells) }
+  } catch {
+    return fallback()
+  }
+}
+
 const PixiBoard = lazy(() => import('./ui/PixiBoard'))
 
 const DIRS: Dir[] = ['N', 'E', 'S', 'W']
 const PUZZLE_IDS: readonly string[] = PUZZLES.map((p) => p.id)
 
 export default function App() {
-  const [puzzleId, setPuzzleId] = useState(PUZZLES[0].id)
+  const initial = useMemo(() => initialStateFromHash(), [])
+  const [puzzleId, setPuzzleId] = useState(initial.puzzleId)
   const puzzle = getPuzzle(puzzleId)!
-  const [history, setHistory] = useState(() => initHistory(gridFromPuzzle(puzzle)))
+  const [history, setHistory] = useState(() => initHistory(initial.grid))
   const grid = history.present
   const [dir, setDir] = useState<Dir>('E')
   const [tier, setTier] = useState<BeltTier>('yellow')
@@ -142,6 +168,26 @@ export default function App() {
   function run() {
     runSimFor(grid)
   }
+
+  // Keep the URL hash in sync with the current solution so the page is
+  // shareable as-is. Uses replaceState to avoid creating a history entry per
+  // placement and to avoid scrolling.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      const encoded = encodeSolution({
+        version: 1,
+        puzzleId,
+        cells: derivePlayerCells(grid, puzzle),
+      })
+      const next = '#' + encoded
+      if (window.location.hash !== next) {
+        window.history.replaceState({}, '', next)
+      }
+    } catch {
+      // URL updates are best-effort; never break the app on history failures.
+    }
+  }, [grid, puzzle, puzzleId])
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
