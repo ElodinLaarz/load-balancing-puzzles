@@ -9,7 +9,8 @@ export interface BoardProps {
   cellSize?: number
   flows?: FlowGrid | null
   sinkResults?: SinkResult[]
-  onCellClick?: (x: number, y: number, button: number) => void
+  /** button: 0 = left/paint, 2 = right/erase. */
+  onCellPaint?: (x: number, y: number, button: number) => void
 }
 
 const RESOURCE_COLOR: Record<string, number> = {
@@ -22,14 +23,24 @@ const RESOURCE_COLOR: Record<string, number> = {
 
 const DIR_ANGLE: Record<Dir, number> = { E: 0, S: Math.PI / 2, W: Math.PI, N: -Math.PI / 2 }
 
-export function PixiBoard({ grid, cellSize = 48, flows, sinkResults, onCellClick }: BoardProps) {
+const MIN_SCALE = 0.3
+const MAX_SCALE = 3
+
+export function PixiBoard({ grid, cellSize = 48, flows, sinkResults, onCellPaint }: BoardProps) {
   const hostRef = useRef<HTMLDivElement>(null)
   const appRef = useRef<Application | null>(null)
   const layerRef = useRef<Container | null>(null)
-  const clickRef = useRef(onCellClick)
-  clickRef.current = onCellClick
+  const paintRef = useRef(onCellPaint)
+  paintRef.current = onCellPaint
   const [ready, setReady] = useState(false)
+  const [scale, setScale] = useState(1)
 
+  const baseW = grid.w * cellSize
+  const baseH = grid.h * cellSize
+  const viewW = Math.ceil(baseW * scale)
+  const viewH = Math.ceil(baseH * scale)
+
+  // Mount Pixi once per grid-size change.
   useEffect(() => {
     const host = hostRef.current
     if (!host) return
@@ -39,8 +50,8 @@ export function PixiBoard({ grid, cellSize = 48, flows, sinkResults, onCellClick
       await app.init({
         background: 0x141821,
         antialias: true,
-        width: grid.w * cellSize,
-        height: grid.h * cellSize,
+        width: baseW,
+        height: baseH,
       })
       if (cancelled) {
         app.destroy(true)
@@ -52,6 +63,9 @@ export function PixiBoard({ grid, cellSize = 48, flows, sinkResults, onCellClick
       appRef.current = app
       layerRef.current = layer
       app.canvas.style.display = 'block'
+      app.canvas.style.width = '100%'
+      app.canvas.style.height = '100%'
+      app.canvas.oncontextmenu = (e) => e.preventDefault()
       setReady(true)
     })()
     return () => {
@@ -63,8 +77,12 @@ export function PixiBoard({ grid, cellSize = 48, flows, sinkResults, onCellClick
         layerRef.current = null
       }
     }
-  }, [grid.w, grid.h, cellSize])
+  }, [baseW, baseH])
 
+  // Resize renderer when scale changes (CSS scales canvas; renderer res stays base).
+  // No-op needed: canvas is base size, host scales via CSS width/height.
+
+  // Draw whenever inputs change.
   useEffect(() => {
     const app = appRef.current
     const layer = layerRef.current
@@ -97,22 +115,69 @@ export function PixiBoard({ grid, cellSize = 48, flows, sinkResults, onCellClick
         layer.addChild(g)
       }
     }
-
-    const hit = new Graphics()
-    hit.rect(0, 0, grid.w * cellSize, grid.h * cellSize).fill({ color: 0xffffff, alpha: 0.001 })
-    hit.eventMode = 'static'
-    hit.on('pointerdown', (e) => {
-      const local = e.getLocalPosition(layer)
-      const cx = Math.floor(local.x / cellSize)
-      const cy = Math.floor(local.y / cellSize)
-      if (cx >= 0 && cx < grid.w && cy >= 0 && cy < grid.h) {
-        clickRef.current?.(cx, cy, e.button)
-      }
-    })
-    layer.addChild(hit)
   }, [ready, grid, cellSize, flows, sinkResults])
 
-  return <div ref={hostRef} style={{ width: grid.w * cellSize, height: grid.h * cellSize }} />
+  // DOM-level handlers for paint/zoom: simpler than Pixi events for drag tracking.
+  function cellFromEvent(e: React.MouseEvent | MouseEvent): { x: number; y: number } | null {
+    const host = hostRef.current
+    if (!host) return null
+    const rect = host.getBoundingClientRect()
+    const lx = ((e.clientX - rect.left) / rect.width) * grid.w
+    const ly = ((e.clientY - rect.top) / rect.height) * grid.h
+    const cx = Math.floor(lx)
+    const cy = Math.floor(ly)
+    if (cx < 0 || cy < 0 || cx >= grid.w || cy >= grid.h) return null
+    return { x: cx, y: cy }
+  }
+
+  const paintingRef = useRef<number | null>(null) // active button
+  const lastCellRef = useRef<string | null>(null)
+
+  function handleDown(e: React.MouseEvent) {
+    if (e.button !== 0 && e.button !== 2) return
+    e.preventDefault()
+    paintingRef.current = e.button
+    lastCellRef.current = null
+    const c = cellFromEvent(e)
+    if (c) {
+      lastCellRef.current = `${c.x},${c.y}`
+      paintRef.current?.(c.x, c.y, e.button)
+    }
+  }
+
+  function handleMove(e: React.MouseEvent) {
+    if (paintingRef.current === null) return
+    const c = cellFromEvent(e)
+    if (!c) return
+    const key = `${c.x},${c.y}`
+    if (key === lastCellRef.current) return
+    lastCellRef.current = key
+    paintRef.current?.(c.x, c.y, paintingRef.current)
+  }
+
+  function handleUp() {
+    paintingRef.current = null
+    lastCellRef.current = null
+  }
+
+  function handleWheel(e: React.WheelEvent) {
+    e.preventDefault()
+    const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1
+    setScale((s) => Math.max(MIN_SCALE, Math.min(MAX_SCALE, s * factor)))
+  }
+
+  return (
+    <div
+      ref={hostRef}
+      style={{ width: viewW, height: viewH, userSelect: 'none', touchAction: 'none' }}
+      onMouseDown={handleDown}
+      onMouseMove={handleMove}
+      onMouseUp={handleUp}
+      onMouseLeave={handleUp}
+      onContextMenu={(e) => e.preventDefault()}
+      onWheel={handleWheel}
+    />
+  )
 }
 
 function drawCell(c: Cell, x: number, y: number, s: number, flow: Record<string, number> | null) {

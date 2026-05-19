@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { PUZZLES, getPuzzle } from './puzzles'
 import { gridFromPuzzle, setCell } from './sim/grid'
 import { checkSinks, solveFlow, type FlowGrid, type SinkResult } from './sim/solve'
@@ -7,15 +7,12 @@ import { idx } from './sim/types'
 import { PixiBoard } from './ui/PixiBoard'
 import './App.css'
 
-type Tool = 'belt' | 'erase'
-
 const DIRS: Dir[] = ['N', 'E', 'S', 'W']
 
 export default function App() {
   const [puzzleId, setPuzzleId] = useState(PUZZLES[0].id)
   const puzzle = getPuzzle(puzzleId)!
   const [grid, setGrid] = useState(() => gridFromPuzzle(puzzle))
-  const [tool, setTool] = useState<Tool>('belt')
   const [dir, setDir] = useState<Dir>('E')
   const [tier, setTier] = useState<BeltTier>('yellow')
   const [flows, setFlows] = useState<FlowGrid | null>(null)
@@ -31,11 +28,13 @@ export default function App() {
     setResults(null)
   }
 
-  function handleClick(x: number, y: number) {
-    const existing = grid.cells[idx(grid, x, y)]
-    if (existing && (existing.kind === 'source' || existing.kind === 'sink')) return
-    const cell: Cell | null = tool === 'erase' ? null : { kind: 'belt', dir, tier }
-    setGrid(setCell(grid, x, y, cell))
+  function handlePaint(x: number, y: number, button: number) {
+    setGrid((g) => {
+      const existing = g.cells[idx(g, x, y)]
+      if (existing && (existing.kind === 'source' || existing.kind === 'sink')) return g
+      const cell: Cell | null = button === 2 ? null : { kind: 'belt', dir, tier }
+      return setCell(g, x, y, cell)
+    })
     setFlows(null)
     setResults(null)
   }
@@ -54,6 +53,17 @@ export default function App() {
 
   const solved = useMemo(() => results && results.every((r) => r.ok), [results])
 
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return
+      if (e.key === 'r' || e.key === 'R') {
+        setDir((d) => DIRS[(DIRS.indexOf(d) + (e.shiftKey ? DIRS.length - 1 : 1)) % DIRS.length])
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
   return (
     <div className="app">
       <aside className="sidebar">
@@ -71,15 +81,9 @@ export default function App() {
         </label>
         <p className="desc">{puzzle.description}</p>
 
-        <h2>Tool</h2>
-        <div className="row">
-          <button className={tool === 'belt' ? 'on' : ''} onClick={() => setTool('belt')}>
-            Belt
-          </button>
-          <button className={tool === 'erase' ? 'on' : ''} onClick={() => setTool('erase')}>
-            Erase
-          </button>
-        </div>
+        <p className="hint">
+          Left-click drag: paint belts. Right-click: erase. Scroll: zoom. R: rotate (Shift+R reverse).
+        </p>
 
         <h2>Direction</h2>
         <div className="row">
@@ -134,7 +138,7 @@ export default function App() {
           grid={grid}
           flows={flows}
           sinkResults={results ?? undefined}
-          onCellClick={handleClick}
+          onCellPaint={handlePaint}
         />
       </main>
     </div>
