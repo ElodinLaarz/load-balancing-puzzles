@@ -8,6 +8,7 @@ import { debounce } from './ui/debounce'
 import { tierForKey } from './ui/hotkeys'
 import { initHistory, push as pushHistory, redo, undo } from './ui/history'
 import { nextPuzzleId } from './ui/nextPuzzle'
+import { hasPlayerCells } from './ui/resetGuard'
 import {
   applySharedCells,
   decodeSolution,
@@ -138,6 +139,12 @@ export default function App() {
   }
 
   function reset() {
+    // Only prompt when there is actual player work on the board. An empty
+    // grid (or one populated only by puzzle-fixed source/sink/obstacle cells)
+    // resets silently — nothing to lose, no need to nag.
+    if (hasPlayerCells(grid) && !window.confirm('Clear all placed cells?')) {
+      return
+    }
     setHistory(initHistory(gridFromPuzzle(puzzle)))
     setFlows(null)
     setResults(null)

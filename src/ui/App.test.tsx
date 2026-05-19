@@ -1,8 +1,9 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import App from '../App'
 import { PUZZLES } from '../puzzles'
+import { encodeSolution } from './share'
 
 // PixiBoard requires a real Canvas (not provided by jsdom) and pulls in pixi.js,
 // so stub it out for the UI render path. App lazy-imports './ui/PixiBoard' from
@@ -120,5 +121,88 @@ describe('App UI smoke', () => {
     expect(
       within(tierRow2).getAllByRole('button').map((b) => b.textContent),
     ).toEqual(['yellow', 'red'])
+  })
+})
+
+describe('Reset button confirm guard', () => {
+  // PixiBoard is mocked so we cannot click-paint cells. To create a non-empty
+  // grid we seed `window.location.hash` with an encoded SharedSolution before
+  // rendering — App.initialStateFromHash reads it on mount.
+  function seedHashWithBelt(puzzleId: string, x: number, y: number) {
+    const encoded = encodeSolution({
+      version: 1,
+      puzzleId,
+      cells: [{ x, y, cell: { kind: 'belt', dir: 'E', tier: 'yellow' } }],
+    })
+    window.history.replaceState({}, '', '#' + encoded)
+  }
+
+  function clearHash() {
+    window.history.replaceState({}, '', window.location.pathname + window.location.search)
+  }
+
+  let confirmSpy: MockInstance<(message?: string) => boolean>
+
+  beforeEach(() => {
+    clearHash()
+    confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+  })
+
+  afterEach(() => {
+    confirmSpy.mockRestore()
+    clearHash()
+  })
+
+  it('prompts and aborts when user cancels with a non-empty grid', async () => {
+    const user = userEvent.setup()
+    seedHashWithBelt(PUZZLES[0].id, 1, 3)
+    confirmSpy.mockReturnValue(false)
+    render(<App />)
+
+    // After mount the hash has been re-encoded with the seeded belt; capture
+    // it so we can prove Reset did not mutate the grid.
+    const hashWithBelt = window.location.hash
+    expect(hashWithBelt.length).toBeGreaterThan(1)
+
+    await user.click(getButtonByExactText('Reset'))
+
+    expect(confirmSpy).toHaveBeenCalledWith('Clear all placed cells?')
+    // Grid still has the belt → hash unchanged.
+    expect(window.location.hash).toBe(hashWithBelt)
+  })
+
+  it('clears the grid when user confirms with a non-empty grid', async () => {
+    const user = userEvent.setup()
+    seedHashWithBelt(PUZZLES[0].id, 1, 3)
+    confirmSpy.mockReturnValue(true)
+    render(<App />)
+
+    const hashWithBelt = window.location.hash
+    expect(hashWithBelt.length).toBeGreaterThan(1)
+
+    await user.click(getButtonByExactText('Reset'))
+
+    expect(confirmSpy).toHaveBeenCalledWith('Clear all placed cells?')
+    // After reset, App re-encodes the empty solution, so the hash should
+    // change. The new hash will encode `cells: []`.
+    await waitFor(() => {
+      expect(window.location.hash).not.toBe(hashWithBelt)
+    })
+  })
+
+  it('does NOT prompt when the grid is already empty', async () => {
+    const user = userEvent.setup()
+    // No hash seeding: initial state is gridFromPuzzle (only source+sink).
+    // Make confirm return false so an accidental prompt would visibly stop us.
+    confirmSpy.mockReturnValue(false)
+    render(<App />)
+
+    const hashBefore = window.location.hash
+
+    await user.click(getButtonByExactText('Reset'))
+
+    expect(confirmSpy).not.toHaveBeenCalled()
+    // Reset on an already-empty grid is a no-op for the URL hash too.
+    expect(window.location.hash).toBe(hashBefore)
   })
 })
