@@ -3,6 +3,7 @@ import { Application, Container, Graphics, Text, TextStyle } from 'pixi.js'
 import type { Cell, Dir, Grid } from '../sim/types'
 import { idx } from '../sim/types'
 import type { FlowGrid, SinkResult } from '../sim/solve'
+import { applyScroll, nextScroll, type PanOrigin } from './pan'
 
 export interface BoardProps {
   grid: Grid
@@ -61,6 +62,28 @@ export function PixiBoard({
   }, [placementDir])
   const [ready, setReady] = useState(false)
   const [scale, setScale] = useState(1)
+  const [spaceDown, setSpaceDown] = useState(false)
+
+  // Track Space key for "space+drag to pan" gesture. Ignore auto-repeat.
+  useEffect(() => {
+    const isEditable = (t: EventTarget | null) =>
+      t instanceof HTMLInputElement || t instanceof HTMLSelectElement || t instanceof HTMLTextAreaElement
+    const onDown = (e: KeyboardEvent) => {
+      if (e.code === 'Space' && !e.repeat && !isEditable(e.target)) {
+        e.preventDefault()
+        setSpaceDown(true)
+      }
+    }
+    const onUp = (e: KeyboardEvent) => {
+      if (e.code === 'Space') setSpaceDown(false)
+    }
+    window.addEventListener('keydown', onDown)
+    window.addEventListener('keyup', onUp)
+    return () => {
+      window.removeEventListener('keydown', onDown)
+      window.removeEventListener('keyup', onUp)
+    }
+  }, [])
 
   const baseW = grid.w * cellSize
   const baseH = grid.h * cellSize
@@ -161,11 +184,39 @@ export function PixiBoard({
   const paintingRef = useRef<number | null>(null)
   const lastCellRef = useRef<{ x: number; y: number } | null>(null)
 
+  // Pan state: middle-mouse drag, or Space+left-drag. Pans the scrollable parent
+  // (`.board-wrap`) rather than the canvas itself, so it composes cleanly with
+  // CSS `overflow: auto` and the existing zoom transform. The ref drives the
+  // hot path (mousemove); state drives cursor styling.
+  const panningRef = useRef(false)
+  const [panning, setPanning] = useState(false)
+  const panOriginRef = useRef<PanOrigin | null>(null)
+  const spaceDownRef = useRef(false)
+  useEffect(() => {
+    spaceDownRef.current = spaceDown
+  }, [spaceDown])
+
   function placeAt(x: number, y: number, dir: Dir | null, button: number) {
     placeRef.current?.(x, y, dir, button)
   }
 
   function handleDown(e: React.MouseEvent) {
+    // Pan: middle-mouse drag, or Space+left-drag. Takes precedence over paint.
+    if (e.button === 1 || (e.button === 0 && spaceDownRef.current)) {
+      const host = hostRef.current
+      const scroller = host?.parentElement
+      if (!scroller) return
+      e.preventDefault()
+      panningRef.current = true
+      panOriginRef.current = {
+        x: e.clientX,
+        y: e.clientY,
+        scrollLeft: scroller.scrollLeft,
+        scrollTop: scroller.scrollTop,
+      }
+      setPanning(true)
+      return
+    }
     if (e.button !== 0 && e.button !== 2) return
     e.preventDefault()
     paintingRef.current = e.button
@@ -180,6 +231,16 @@ export function PixiBoard({
   }
 
   function handleMove(e: React.MouseEvent) {
+    if (panningRef.current && panOriginRef.current) {
+      const scroller = hostRef.current?.parentElement
+      if (scroller) {
+        applyScroll(
+          scroller,
+          nextScroll(panOriginRef.current, { clientX: e.clientX, clientY: e.clientY })
+        )
+      }
+      return
+    }
     const c = cellFromEvent(e)
     hoverRef.current?.(c)
     const button = paintingRef.current
@@ -215,6 +276,12 @@ export function PixiBoard({
   }
 
   function handleUp() {
+    if (panningRef.current) {
+      panningRef.current = false
+      panOriginRef.current = null
+      setPanning(false)
+      return
+    }
     paintingRef.current = null
     lastCellRef.current = null
   }
@@ -230,16 +297,24 @@ export function PixiBoard({
     setScale((s) => Math.max(MIN_SCALE, Math.min(MAX_SCALE, s * factor)))
   }
 
+  // Cursor: 'grabbing' during an active pan, 'grab' when Space is held (pan-ready),
+  // default otherwise.
+  const cursor = panning ? 'grabbing' : spaceDown ? 'grab' : 'default'
+
   return (
     <div
       ref={hostRef}
-      style={{ width: viewW, height: viewH, userSelect: 'none', touchAction: 'none' }}
+      style={{ width: viewW, height: viewH, userSelect: 'none', touchAction: 'none', cursor }}
       onMouseDown={handleDown}
       onMouseMove={handleMove}
       onMouseUp={handleUp}
       onMouseLeave={handleLeave}
       onContextMenu={(e) => e.preventDefault()}
       onWheel={handleWheel}
+      // Suppress browser middle-click auto-scroll on platforms that bind it.
+      onAuxClick={(e) => {
+        if (e.button === 1) e.preventDefault()
+      }}
     />
   )
 }
