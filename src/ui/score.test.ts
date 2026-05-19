@@ -47,4 +47,13 @@ describe('scoreGrid', () => {
     g = setCell(g, 1, 0, obstacle)
     expect(scoreGrid(g)).toEqual({ cellsUsed: 1, tierCost: 1, total: 2 })
   })
+
+  it("ignores non-null cells with kind 'empty'", () => {
+    let g = emptyGrid(2, 1)
+    const belt: Cell = { kind: 'belt', dir: 'E', tier: 'yellow' }
+    const empty: Cell = { kind: 'empty', dir: 'E' }
+    g = setCell(g, 0, 0, belt)
+    g = setCell(g, 1, 0, empty)
+    expect(scoreGrid(g)).toEqual({ cellsUsed: 1, tierCost: 1, total: 2 })
+  })
 })

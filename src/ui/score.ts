@@ -28,7 +28,13 @@ export function scoreGrid(g: Grid): PuzzleScore {
   let tierCost = 0
   for (const c of g.cells) {
     if (!c) continue
-    if (c.kind === 'source' || c.kind === 'sink' || c.kind === 'obstacle') continue
+    if (
+      c.kind === 'source' ||
+      c.kind === 'sink' ||
+      c.kind === 'obstacle' ||
+      c.kind === 'empty'
+    )
+      continue
     cellsUsed += 1
     tierCost += c.tier ? TIER_COST[c.tier] : 1
   }
