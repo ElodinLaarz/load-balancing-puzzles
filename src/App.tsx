@@ -15,6 +15,7 @@ import './App.css'
 const PixiBoard = lazy(() => import('./ui/PixiBoard'))
 
 const DIRS: Dir[] = ['N', 'E', 'S', 'W']
+const PUZZLE_IDS: readonly string[] = PUZZLES.map((p) => p.id)
 
 export default function App() {
   const [puzzleId, setPuzzleId] = useState(PUZZLES[0].id)
@@ -98,14 +99,7 @@ export default function App() {
   }
 
   const solved = useMemo(() => results && results.every((r) => r.ok), [results])
-  const nextId = useMemo(
-    () =>
-      nextPuzzleId(
-        puzzleId,
-        PUZZLES.map((p) => p.id),
-      ),
-    [puzzleId],
-  )
+  const nextId = useMemo(() => nextPuzzleId(puzzleId, PUZZLE_IDS), [puzzleId])
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
