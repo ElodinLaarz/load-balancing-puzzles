@@ -22,6 +22,7 @@ export type CellKind =
   | 'splitter-right'
   | 'source' // puzzle-fixed input
   | 'sink' // puzzle-fixed output
+  | 'obstacle' // puzzle-fixed non-buildable terrain; blocks placement and flow
 
 export interface Cell {
   kind: CellKind

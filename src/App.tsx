@@ -38,7 +38,11 @@ export default function App() {
   function handlePlace(x: number, y: number, placeDir: Dir | null, button: number) {
     setGrid((g) => {
       const existing = g.cells[idx(g, x, y)]
-      if (existing && (existing.kind === 'source' || existing.kind === 'sink')) return g
+      if (
+        existing &&
+        (existing.kind === 'source' || existing.kind === 'sink' || existing.kind === 'obstacle')
+      )
+        return g
       if (button === 2) return setCell(g, x, y, null)
       const useDir = placeDir ?? dir
       // Preserve tier of an existing belt when re-orienting mid-drag; new placements
@@ -85,7 +89,7 @@ export default function App() {
           let newDir: Dir | null = null
           setGrid((g) => {
             const c = g.cells[idx(g, hover.x, hover.y)]
-            if (!c || c.kind === 'source' || c.kind === 'sink') return g
+            if (!c || c.kind === 'source' || c.kind === 'sink' || c.kind === 'obstacle') return g
             rotated = true
             newDir = rotate(c.dir)
             return setCell(g, hover.x, hover.y, { ...c, dir: newDir })

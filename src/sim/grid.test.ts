@@ -80,6 +80,24 @@ describe('gridFromPuzzle', () => {
     expect(sources).toBe(2)
     expect(sinks).toBe(4)
   })
+
+  it('places obstacles as non-buildable cells', () => {
+    const puzzleWithObstacle: Puzzle = {
+      id: 'test-obstacle',
+      title: 'Test',
+      description: 'Obstacle test',
+      width: 8,
+      height: 6,
+      sources: [{ x: 0, y: 0, dir: 'E', tier: 'yellow', feed: { iron: 15 } }],
+      sinks: [{ x: 7, y: 0, dir: 'E', tier: 'yellow', require: { iron: 15 } }],
+      obstacles: [{ x: 5, y: 3 }],
+    }
+    const g = gridFromPuzzle(puzzleWithObstacle)
+    const obstacle = g.cells[idx(g, 5, 3)]
+    expect(obstacle?.kind).toBe('obstacle')
+    // Cells outside the obstacle list remain empty.
+    expect(g.cells[idx(g, 4, 3)]).toBeNull()
+  })
 })
 
 describe('setCell', () => {
