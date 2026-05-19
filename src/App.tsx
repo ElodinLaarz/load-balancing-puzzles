@@ -6,6 +6,7 @@ import type { BeltTier, Cell, Dir, Grid } from './sim/types'
 import { idx } from './sim/types'
 import { tierForKey } from './ui/hotkeys'
 import { initHistory, push as pushHistory, redo, undo } from './ui/history'
+import { nextPuzzleId } from './ui/nextPuzzle'
 import { WinModal } from './ui/WinModal'
 import { getBest, saveIfBest, type BestScoreRecord } from './ui/highScores'
 import { scoreGrid } from './ui/score'
@@ -97,6 +98,14 @@ export default function App() {
   }
 
   const solved = useMemo(() => results && results.every((r) => r.ok), [results])
+  const nextId = useMemo(
+    () =>
+      nextPuzzleId(
+        puzzleId,
+        PUZZLES.map((p) => p.id),
+      ),
+    [puzzleId],
+  )
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -245,6 +254,7 @@ export default function App() {
         previousBest={previousBest}
         isNewBest={isNewBest}
         onClose={() => setModalOpen(false)}
+        onNextPuzzle={nextId ? () => changePuzzle(nextId) : undefined}
       />
     </div>
   )
