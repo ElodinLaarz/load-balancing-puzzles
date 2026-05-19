@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { checkSinks, solveFlow, type FlowGrid } from './solve'
+import { checkSinks, solveFlow, solveFlowDetailed, type FlowGrid } from './solve'
 import { emptyGrid, gridFromPuzzle, setCell } from './grid'
 import { idx, type Cell, type Grid, type Dir } from './types'
 import type { Puzzle } from '../puzzles/schema'
@@ -263,5 +263,132 @@ describe('throughput cap', () => {
     const results = checkSinks(g, flows)
     expect(results[0].ok).toBe(true)
     expect(results[0].actual.iron).toBeCloseTo(30, 5)
+  })
+})
+
+describe('solveFlowDetailed convergence detection', () => {
+  it('simple belt chain converges in <20 iters', () => {
+    // Source -> 8 belts -> sink, all eastbound.
+    let g = gridFromPuzzle(puzzle as Puzzle)
+    g = layEastRow(g, 1, 8, 3)
+    const result = solveFlowDetailed(g)
+    expect(result.status).toBe('converged')
+    expect(result.iters).toBeLessThan(20)
+    // Flows must still be correct.
+    const sinkResults = checkSinks(g, result.flows)
+    expect(sinkResults[0].ok).toBe(true)
+  })
+
+  it('linear belt preserves per-resource composition (single belt cell)', () => {
+    // Source { iron: 5, copper: 5 } → 1-cell belt → sink reads { iron: 5, copper: 5 }.
+    const g = emptyGrid(3, 1)
+    g.cells[idx(g, 0, 0)] = {
+      kind: 'source',
+      dir: 'E',
+      tier: 'red',
+      feed: { iron: 5, copper: 5 },
+    }
+    g.cells[idx(g, 1, 0)] = beltCell('E', 'red')
+    g.cells[idx(g, 2, 0)] = {
+      kind: 'sink',
+      dir: 'E',
+      tier: 'red',
+      require: { iron: 5, copper: 5 },
+      tolerance: 0.01,
+    }
+    const result = solveFlowDetailed(g)
+    expect(result.status).toBe('converged')
+    const sinkFlow = result.flows[idx(g, 2, 0)]
+    expect(sinkFlow).not.toBeNull()
+    expect(sinkFlow!.iron).toBeCloseTo(5, 5)
+    expect(sinkFlow!.copper).toBeCloseTo(5, 5)
+  })
+
+  it('composition preserved through varied-tier chain (yellow→red→blue ratio preserved)', () => {
+    // Mixed-tier chain: source pushes 6 iron + 9 copper (15 total, fits yellow cap).
+    // Tiers go yellow → red → blue. Composition ratio iron:copper = 2:3 must hold
+    // end-to-end. Total rate is capped by the lowest tier (yellow=15) at most.
+    const g = emptyGrid(6, 1)
+    g.cells[idx(g, 0, 0)] = {
+      kind: 'source',
+      dir: 'E',
+      tier: 'blue',
+      feed: { iron: 6, copper: 9 },
+    }
+    g.cells[idx(g, 1, 0)] = beltCell('E', 'yellow')
+    g.cells[idx(g, 2, 0)] = beltCell('E', 'red')
+    g.cells[idx(g, 3, 0)] = beltCell('E', 'blue')
+    g.cells[idx(g, 4, 0)] = beltCell('E', 'yellow')
+    g.cells[idx(g, 5, 0)] = {
+      kind: 'sink',
+      dir: 'E',
+      tier: 'blue',
+      require: { iron: 6, copper: 9 },
+      tolerance: 0.01,
+    }
+    const result = solveFlowDetailed(g)
+    expect(result.status).toBe('converged')
+    const sinkFlow = result.flows[idx(g, 5, 0)]
+    expect(sinkFlow).not.toBeNull()
+    const iron = sinkFlow!.iron ?? 0
+    const copper = sinkFlow!.copper ?? 0
+    // Ratio iron / copper must equal 6 / 9 = 2/3 (composition preserved).
+    expect(iron / copper).toBeCloseTo(6 / 9, 5)
+    // Total fits within yellow cap (15), so full source flows through.
+    expect(iron + copper).toBeCloseTo(15, 5)
+  })
+
+  it('zero-flow cycle (no source feeding) does not crash and is converged', () => {
+    // 4-belt loop: (1,3)E -> (2,3)S -> (2,4)W -> (1,4)N -> back to (1,3).
+    let g = emptyGrid(5, 6)
+    g = setCell(g, 1, 3, beltCell('E'))
+    g = setCell(g, 2, 3, beltCell('S'))
+    g = setCell(g, 2, 4, beltCell('W'))
+    g = setCell(g, 1, 4, beltCell('N'))
+    const result = solveFlowDetailed(g)
+    expect(result.status).toBe('converged')
+    // Trivially stable: all flows zero.
+    for (const f of result.flows) {
+      if (!f) continue
+      for (const k in f) expect(f[k]).toBe(0)
+    }
+  })
+
+  it('source-fed cycle does not crash (oscillating or max-iter both acceptable)', () => {
+    // Same 4-belt loop, but with a source feeding into (1,3) from the west.
+    let g = emptyGrid(5, 6)
+    g.cells[idx(g, 0, 3)] = {
+      kind: 'source',
+      dir: 'E',
+      tier: 'yellow',
+      feed: { iron: 10 },
+    }
+    g = setCell(g, 1, 3, beltCell('E'))
+    g = setCell(g, 2, 3, beltCell('S'))
+    g = setCell(g, 2, 4, beltCell('W'))
+    g = setCell(g, 1, 4, beltCell('N'))
+    // Must not throw; either oscillating, max-iter, or even converged is OK.
+    const result = solveFlowDetailed(g)
+    expect(['converged', 'oscillating', 'max-iter']).toContain(result.status)
+    // All flows must remain finite & non-negative.
+    for (const f of result.flows) {
+      if (!f) continue
+      for (const k in f) {
+        expect(Number.isFinite(f[k])).toBe(true)
+        expect(f[k]).toBeGreaterThanOrEqual(0)
+      }
+    }
+  })
+
+  it('solveFlow back-compat returns FlowGrid (legacy signature still works)', () => {
+    let g = gridFromPuzzle(puzzle as Puzzle)
+    g = layEastRow(g, 1, 8, 3)
+    const flows = solveFlow(g)
+    // FlowGrid is (Flow | null)[] — must be an array of length w*h.
+    expect(Array.isArray(flows)).toBe(true)
+    expect(flows).toHaveLength(g.w * g.h)
+    // And contain the same data as solveFlowDetailed(g).flows.
+    const detailed = solveFlowDetailed(g)
+    expect(flows).toEqual(detailed.flows)
   })
 })
