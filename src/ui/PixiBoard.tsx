@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { Application, Container, Graphics, Text, TextStyle } from 'pixi.js'
-import type { Cell, Dir, Grid } from '../sim/types'
+import type { BeltTier, Cell, Dir, Grid } from '../sim/types'
 import { idx } from '../sim/types'
 import type { FlowGrid, SinkResult } from '../sim/solve'
 import { applyScroll, nextScroll, type PanOrigin } from './pan'
+import { previewCellSpec } from './previewCell'
 
 export interface BoardProps {
   grid: Grid
@@ -12,6 +13,8 @@ export interface BoardProps {
   sinkResults?: SinkResult[]
   /** Active placement direction; used for the first cell of a drag before motion exists. */
   placementDir: Dir
+  /** Active placement tier; used to color the ghost preview under the cursor. */
+  placementTier: BeltTier
   /**
    * Called per cell during paint/erase. For paint, `dir` is the smart-tile direction
    * (motion-aware); for erase, `dir` is null.
@@ -39,12 +42,14 @@ export function PixiBoard({
   flows,
   sinkResults,
   placementDir,
+  placementTier,
   onPlace,
   onHoverCell,
 }: BoardProps) {
   const hostRef = useRef<HTMLDivElement>(null)
   const appRef = useRef<Application | null>(null)
   const layerRef = useRef<Container | null>(null)
+  const previewLayerRef = useRef<Container | null>(null)
   const placeRef = useRef(onPlace)
   const hoverRef = useRef(onHoverCell)
   const placementDirRef = useRef(placementDir)
@@ -63,6 +68,7 @@ export function PixiBoard({
   const [ready, setReady] = useState(false)
   const [scale, setScale] = useState(1)
   const [spaceDown, setSpaceDown] = useState(false)
+  const [hover, setHover] = useState<{ x: number; y: number } | null>(null)
 
   // Track Space key for "space+drag to pan" gesture. Ignore auto-repeat.
   useEffect(() => {
@@ -110,8 +116,14 @@ export function PixiBoard({
       host.appendChild(app.canvas)
       const layer = new Container()
       app.stage.addChild(layer)
+      // Preview overlay lives in its own layer so hover-driven redraws don't
+      // touch the main cell layer.
+      const previewLayer = new Container()
+      previewLayer.alpha = 0.4
+      app.stage.addChild(previewLayer)
       appRef.current = app
       layerRef.current = layer
+      previewLayerRef.current = previewLayer
       app.canvas.style.display = 'block'
       app.canvas.style.width = '100%'
       app.canvas.style.height = '100%'
@@ -125,6 +137,7 @@ export function PixiBoard({
         appRef.current.destroy(true, { children: true })
         appRef.current = null
         layerRef.current = null
+        previewLayerRef.current = null
       }
     }
   }, [baseW, baseH])
@@ -166,6 +179,26 @@ export function PixiBoard({
       }
     }
   }, [ready, grid, cellSize, flows, sinkResults])
+
+  // Ghost preview overlay. Runs in its own layer with alpha 0.4 so hover-driven
+  // redraws don't thrash the main cell layer. Skipped when hovering source/sink
+  // (those cells can't be replaced anyway).
+  useEffect(() => {
+    const preview = previewLayerRef.current
+    if (!ready || !preview) return
+    preview.removeChildren()
+    if (!hover) return
+    const existing = grid.cells[idx(grid, hover.x, hover.y)]
+    if (existing && (existing.kind === 'source' || existing.kind === 'sink')) return
+    const ghost = drawCell(
+      previewCellSpec(placementDir, placementTier),
+      hover.x,
+      hover.y,
+      cellSize,
+      null,
+    )
+    preview.addChild(ghost)
+  }, [ready, hover, placementDir, placementTier, cellSize, grid])
 
   // DOM-level handlers for paint/zoom: simpler than Pixi events for drag tracking.
   function cellFromEvent(e: React.MouseEvent | MouseEvent): { x: number; y: number } | null {
@@ -243,6 +276,11 @@ export function PixiBoard({
     }
     const c = cellFromEvent(e)
     hoverRef.current?.(c)
+    setHover((prev) => {
+      if (c === null) return prev === null ? prev : null
+      if (prev && prev.x === c.x && prev.y === c.y) return prev
+      return c
+    })
     const button = paintingRef.current
     if (button === null || !c) return
     const last = lastCellRef.current
@@ -289,6 +327,7 @@ export function PixiBoard({
   function handleLeave() {
     handleUp()
     hoverRef.current?.(null)
+    setHover(null)
   }
 
   function handleWheel(e: React.WheelEvent) {
