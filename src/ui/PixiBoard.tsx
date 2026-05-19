@@ -5,6 +5,7 @@ import { idx } from '../sim/types'
 import type { FlowGrid, SinkResult } from '../sim/solve'
 import { applyScroll, exceedsTapThreshold, nextScroll, type PanOrigin } from './pan'
 import { previewCellSpec } from './previewCell'
+import { classifyTouchGesture } from './touch'
 
 export interface BoardProps {
   grid: Grid
@@ -239,15 +240,18 @@ export function PixiBoard({
 
   // Touch gesture state. A single-finger drag pans the board (mirrors
   // middle-mouse pan); a single-finger touch with movement under the tap
-  // threshold ends as a tap that places one cell. Any time a second finger
-  // lands, the gesture is cancelled (multi-touch is reserved for future
-  // pinch-zoom and must NOT trigger pan or paint side effects).
+  // threshold ends as either a tap (short hold → place) or a long-press
+  // (>=500ms hold in approximately the same spot → erase, mirroring
+  // right-click on desktop since touch devices have no right-click). Any
+  // time a second finger lands, the gesture is cancelled (multi-touch is
+  // reserved for future pinch-zoom and must NOT trigger pan or paint side
+  // effects).
   //
-  // Pinch-zoom and long-press erase are out of scope for this change.
+  // Pinch-zoom is out of scope for this change.
   // `null` means "no active single-finger gesture" — that covers both the
   // idle state and the post-multi-touch cancelled state.
   const touchGestureRef = useRef<{
-    start: { x: number; y: number; scrollLeft: number; scrollTop: number }
+    start: { x: number; y: number; scrollLeft: number; scrollTop: number; timeMs: number }
     moved: boolean
   } | null>(null)
 
@@ -277,6 +281,7 @@ export function PixiBoard({
         y: t.clientY,
         scrollLeft: scroller.scrollLeft,
         scrollTop: scroller.scrollTop,
+        timeMs: performance.now(),
       },
       moved: false,
     }
@@ -346,7 +351,26 @@ export function PixiBoard({
     if (!t) return
     const c = cellFromClient(t.clientX, t.clientY)
     if (!c) return
-    placeAt(c.x, c.y, placementDirRef.current, 0)
+    // Classify the held-in-place gesture by hold duration: short → place,
+    // long (>=500ms) → erase. The 'drag' branch is unreachable here because
+    // any motion beyond the tap threshold already promoted to a pan in
+    // handleTouchMove (so `gesture.moved` would be true and we'd have
+    // returned above). We still pass the precise end-point distance so the
+    // classifier remains the single source of truth for the boundary.
+    const dx = t.clientX - gesture.start.x
+    const dy = t.clientY - gesture.start.y
+    const kind = classifyTouchGesture({
+      startTimeMs: gesture.start.timeMs,
+      endTimeMs: performance.now(),
+      distancePx: Math.hypot(dx, dy),
+    })
+    if (kind === 'long-press') {
+      // Mirror right-click erase: button=2, dir=null. App.handlePlace routes
+      // button===2 to setCell(..., null), which clears the cell.
+      placeAt(c.x, c.y, null, 2)
+    } else if (kind === 'tap') {
+      placeAt(c.x, c.y, placementDirRef.current, 0)
+    }
   }
 
   function handleTouchCancel() {
