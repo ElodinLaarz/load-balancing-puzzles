@@ -110,7 +110,7 @@ export default function App() {
         <p className="desc">{puzzle.description}</p>
 
         <p className="hint">
-          Left-click drag: paint belts. Right-click: erase. Scroll: zoom. R: rotate (Shift+R reverse).
+          Left-click drag: paint belts. Right-click: erase. Scroll: zoom. R: rotate (Shift+R reverse). Space+drag or middle-click: pan.
         </p>
 
         <h2>Direction</h2>
