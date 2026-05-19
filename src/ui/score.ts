@@ -19,19 +19,16 @@ export interface PuzzleScore {
 }
 
 /**
- * Compute the win-score for a grid. Puzzle-fixed cells (source, sink) are not
- * counted because the player did not place them. Empty cells obviously don't
- * count either.
- *
- * TODO: when an 'obstacle' cell kind lands (see issue #8 sibling tasks /
- * agent #5e), add an exclusion for it here too.
+ * Compute the win-score for a grid. Puzzle-fixed cells (source, sink, obstacle)
+ * are not counted because the player did not place them. Empty cells obviously
+ * don't count either.
  */
 export function scoreGrid(g: Grid): PuzzleScore {
   let cellsUsed = 0
   let tierCost = 0
   for (const c of g.cells) {
     if (!c) continue
-    if (c.kind === 'source' || c.kind === 'sink') continue
+    if (c.kind === 'source' || c.kind === 'sink' || c.kind === 'obstacle') continue
     cellsUsed += 1
     tierCost += c.tier ? TIER_COST[c.tier] : 1
   }

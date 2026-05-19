@@ -38,4 +38,13 @@ describe('scoreGrid', () => {
   it('exposes a TIER_COST table with yellow=1, red=2, blue=4', () => {
     expect(TIER_COST).toEqual({ yellow: 1, red: 2, blue: 4 })
   })
+
+  it('ignores obstacle cells (puzzle-fixed, not player-placed)', () => {
+    let g = emptyGrid(3, 1)
+    const belt: Cell = { kind: 'belt', dir: 'E', tier: 'yellow' }
+    const obstacle: Cell = { kind: 'obstacle', dir: 'E' }
+    g = setCell(g, 0, 0, belt)
+    g = setCell(g, 1, 0, obstacle)
+    expect(scoreGrid(g)).toEqual({ cellsUsed: 1, tierCost: 1, total: 2 })
+  })
 })
