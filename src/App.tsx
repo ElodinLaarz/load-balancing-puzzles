@@ -4,6 +4,7 @@ import { gridFromPuzzle, setCell } from './sim/grid'
 import { checkSinks, solveFlow, type FlowGrid, type SinkResult } from './sim/solve'
 import type { BeltTier, Cell, Dir, Grid } from './sim/types'
 import { idx } from './sim/types'
+import { debounce } from './ui/debounce'
 import { tierForKey } from './ui/hotkeys'
 import { initHistory, push as pushHistory, redo, undo } from './ui/history'
 import { nextPuzzleId } from './ui/nextPuzzle'
@@ -11,6 +12,11 @@ import { WinModal } from './ui/WinModal'
 import { getBest, saveIfBest, type BestScoreRecord } from './ui/highScores'
 import { scoreGrid } from './ui/score'
 import './App.css'
+
+/** Delay (ms) between the last grid edit and an auto-run of the simulator. */
+const AUTO_RUN_DEBOUNCE_MS = 250
+
+type SimStatus = 'idle' | 'pending' | 'ok' | 'fail'
 
 const PixiBoard = lazy(() => import('./ui/PixiBoard'))
 
@@ -26,10 +32,15 @@ export default function App() {
   const [tier, setTier] = useState<BeltTier>('yellow')
   const [flows, setFlows] = useState<FlowGrid | null>(null)
   const [results, setResults] = useState<SinkResult[] | null>(null)
+  const [simStatus, setSimStatus] = useState<SimStatus>('idle')
   const [modalOpen, setModalOpen] = useState(false)
   const [previousBest, setPreviousBest] = useState<BestScoreRecord | null>(null)
   const [isNewBest, setIsNewBest] = useState(false)
   const hoverRef = useRef<{ x: number; y: number } | null>(null)
+  // Tracks whether the previous auto-run reported a solved grid. The win modal
+  // should only open on the false→true edge, not on every re-render of an
+  // already-solved board (e.g. if the user closes it).
+  const wasSolvedLastTickRef = useRef(false)
 
   const allowedTiers = puzzle.allowedTiers ?? (['yellow', 'red', 'blue'] as BeltTier[])
 
@@ -37,6 +48,9 @@ export default function App() {
     setHistory((h) => {
       const next = fn(h.present)
       if (next === h.present) return h
+      // A real edit landed: mark the sim as awaiting a debounced re-run so the
+      // status indicator reflects the in-flight state immediately.
+      setSimStatus('pending')
       return pushHistory(h, next)
     })
   }
@@ -47,9 +61,11 @@ export default function App() {
     setHistory(initHistory(gridFromPuzzle(p)))
     setFlows(null)
     setResults(null)
+    setSimStatus('idle')
     setModalOpen(false)
     setPreviousBest(null)
     setIsNewBest(false)
+    wasSolvedLastTickRef.current = false
   }
 
   function handlePlace(x: number, y: number, placeDir: Dir | null, button: number) {
@@ -68,47 +84,75 @@ export default function App() {
       const cell: Cell = { kind: 'belt', dir: useDir, tier: useTier }
       return setCell(g, x, y, cell)
     })
-    setFlows(null)
-    setResults(null)
   }
 
-  function run() {
-    const f = solveFlow(grid)
-    const r = checkSinks(grid, f)
+  // Run the sim against a specific grid snapshot, push results to state, and
+  // open the win modal on a non-solved → solved transition. Returns the new
+  // status so callers can verify the run without re-reading React state.
+  function runSimFor(g: Grid): SimStatus {
+    const f = solveFlow(g)
+    const r = checkSinks(g, f)
+    const solved = r.every((s) => s.ok)
     setFlows(f)
     setResults(r)
-    if (r.every((s) => s.ok)) {
+    const status: SimStatus = solved ? 'ok' : 'fail'
+    setSimStatus(status)
+    if (solved && !wasSolvedLastTickRef.current) {
       // Capture the previous best BEFORE saving, so the modal can show what
       // the player just beat (if anything).
       const prev = getBest(puzzleId)
-      const score = scoreGrid(grid)
+      const score = scoreGrid(g)
       saveIfBest(puzzleId, score)
       setPreviousBest(prev)
       setIsNewBest(!prev || score.total < prev.total)
       setModalOpen(true)
     }
+    wasSolvedLastTickRef.current = solved
+    return status
   }
 
   function reset() {
     setHistory(initHistory(gridFromPuzzle(puzzle)))
     setFlows(null)
     setResults(null)
+    setSimStatus('idle')
     setModalOpen(false)
     setPreviousBest(null)
     setIsNewBest(false)
+    wasSolvedLastTickRef.current = false
   }
 
   const solved = useMemo(() => results && results.every((r) => r.ok), [results])
   const nextId = useMemo(() => nextPuzzleId(puzzleId, PUZZLE_IDS), [puzzleId])
+
+  // Auto-run the sim after every grid edit (debounced). Cleanup cancels any
+  // pending invocation so a rapid sequence of edits coalesces into a single
+  // run against the latest grid snapshot. Note: the 'pending' status itself
+  // is set synchronously inside `applyGrid` / undo / redo handlers — this
+  // effect only owns the eventual ok/fail transition.
+  useEffect(() => {
+    const d = debounce((g: Grid) => {
+      runSimFor(g)
+    }, AUTO_RUN_DEBOUNCE_MS)
+    d.call(grid)
+    return () => d.cancel()
+  }, [grid])
+
+  // Manual run: fire immediately, bypassing the debounce window.
+  function run() {
+    runSimFor(grid)
+  }
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'z' || e.key === 'Z')) {
         e.preventDefault()
-        setHistory(undo)
-        setFlows(null)
-        setResults(null)
+        setHistory((h) => {
+          const next = undo(h)
+          if (next !== h) setSimStatus('pending')
+          return next
+        })
         return
       }
       if (
@@ -116,9 +160,11 @@ export default function App() {
         ((e.shiftKey && (e.key === 'z' || e.key === 'Z')) || e.key === 'y' || e.key === 'Y')
       ) {
         e.preventDefault()
-        setHistory(redo)
-        setFlows(null)
-        setResults(null)
+        setHistory((h) => {
+          const next = redo(h)
+          if (next !== h) setSimStatus('pending')
+          return next
+        })
         return
       }
       const nextTier = tierForKey(e.key, allowedTiers)
@@ -142,8 +188,6 @@ export default function App() {
           })
           if (rotated) {
             if (newDir) setDir(newDir)
-            setFlows(null)
-            setResults(null)
           } else {
             setDir(rotate)
           }
@@ -195,7 +239,15 @@ export default function App() {
           ))}
         </div>
 
-        <h2>Sim</h2>
+        <h2 className="sim-header">
+          <span>Sim</span>
+          <span
+            className={`sim-status sim-status-${simStatus}`}
+            role="status"
+            aria-label={`Simulation status: ${simStatus}`}
+            title={`Simulation: ${simStatus}`}
+          />
+        </h2>
         <div className="row">
           <button onClick={run}>Run</button>
           <button onClick={reset}>Reset</button>
