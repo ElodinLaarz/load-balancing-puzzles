@@ -24,6 +24,11 @@ export function gridFromPuzzle(p: Puzzle): Grid {
       tolerance: k.tolerance,
     }
   }
+  // Obstacles are puzzle-fixed walls. `dir` is unused for them; we set 'E'
+  // only to satisfy the required Cell field.
+  for (const o of p.obstacles ?? []) {
+    g.cells[idx(g, o.x, o.y)] = { kind: 'obstacle', dir: 'E' }
+  }
   return g
 }
 

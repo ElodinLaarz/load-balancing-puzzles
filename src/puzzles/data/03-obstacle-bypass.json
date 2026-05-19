@@ -1,0 +1,15 @@
+{
+  "id": "03-obstacle-bypass",
+  "title": "Obstacle Bypass",
+  "description": "A wall of obstacles blocks the straight path. Route around it.",
+  "width": 10,
+  "height": 6,
+  "allowedTiers": ["yellow"],
+  "sources": [{ "x": 0, "y": 3, "dir": "E", "tier": "yellow", "feed": { "iron": 15 } }],
+  "sinks": [{ "x": 9, "y": 3, "dir": "E", "tier": "yellow", "require": { "iron": 15 }, "tolerance": 0.5 }],
+  "obstacles": [
+    { "x": 4, "y": 2 },
+    { "x": 4, "y": 3 },
+    { "x": 4, "y": 4 }
+  ]
+}

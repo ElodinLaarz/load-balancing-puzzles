@@ -410,6 +410,28 @@ function drawCell(c: Cell, x: number, y: number, s: number, flow: Record<string,
   node.x = x * s
   node.y = y * s
 
+  // Obstacles: solid slate base with diagonal hatching. No arrow, no flow bar —
+  // they aren't directional and never carry flow. Hatching is clipped to the
+  // inset rect so diagonal strokes don't bleed into neighboring cells.
+  if (c.kind === 'obstacle') {
+    const inset = 2
+    const size = s - inset * 2
+    const base = new Graphics()
+    base.rect(inset, inset, size, size).fill({ color: 0x3a4150 })
+    node.addChild(base)
+    const hatch = new Graphics()
+    for (let i = -size; i < size; i += 8) {
+      hatch.moveTo(inset + i, inset).lineTo(inset + i + size, inset + size)
+    }
+    hatch.stroke({ color: 0x5a6173, width: 2 })
+    const mask = new Graphics()
+    mask.rect(inset, inset, size, size).fill({ color: 0xffffff })
+    node.addChild(mask)
+    hatch.mask = mask
+    node.addChild(hatch)
+    return node
+  }
+
   const g = new Graphics()
   const color =
     c.kind === 'source'
