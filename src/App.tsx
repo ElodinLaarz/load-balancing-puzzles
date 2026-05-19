@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { PUZZLES, getPuzzle } from './puzzles'
 import { gridFromPuzzle, setCell } from './sim/grid'
 import { checkSinks, solveFlow, type FlowGrid, type SinkResult } from './sim/solve'
@@ -17,6 +17,7 @@ export default function App() {
   const [tier, setTier] = useState<BeltTier>('yellow')
   const [flows, setFlows] = useState<FlowGrid | null>(null)
   const [results, setResults] = useState<SinkResult[] | null>(null)
+  const hoverRef = useRef<{ x: number; y: number } | null>(null)
 
   const allowedTiers = puzzle.allowedTiers ?? (['yellow', 'red', 'blue'] as BeltTier[])
 
@@ -57,7 +58,20 @@ export default function App() {
     function onKey(e: KeyboardEvent) {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return
       if (e.key === 'r' || e.key === 'R') {
-        setDir((d) => DIRS[(DIRS.indexOf(d) + (e.shiftKey ? DIRS.length - 1 : 1)) % DIRS.length])
+        const step = e.shiftKey ? DIRS.length - 1 : 1
+        const rotate = (d: Dir) => DIRS[(DIRS.indexOf(d) + step) % DIRS.length]
+        const hover = hoverRef.current
+        if (hover) {
+          setGrid((g) => {
+            const c = g.cells[idx(g, hover.x, hover.y)]
+            if (!c || c.kind === 'source' || c.kind === 'sink') return g
+            return setCell(g, hover.x, hover.y, { ...c, dir: rotate(c.dir) })
+          })
+          setFlows(null)
+          setResults(null)
+        } else {
+          setDir(rotate)
+        }
       }
     }
     window.addEventListener('keydown', onKey)
@@ -139,6 +153,9 @@ export default function App() {
           flows={flows}
           sinkResults={results ?? undefined}
           onCellPaint={handlePaint}
+          onHoverCell={(c) => {
+            hoverRef.current = c
+          }}
         />
       </main>
     </div>

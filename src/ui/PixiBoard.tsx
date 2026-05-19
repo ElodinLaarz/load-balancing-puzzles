@@ -11,6 +11,7 @@ export interface BoardProps {
   sinkResults?: SinkResult[]
   /** button: 0 = left/paint, 2 = right/erase. */
   onCellPaint?: (x: number, y: number, button: number) => void
+  onHoverCell?: (cell: { x: number; y: number } | null) => void
 }
 
 const RESOURCE_COLOR: Record<string, number> = {
@@ -26,12 +27,14 @@ const DIR_ANGLE: Record<Dir, number> = { E: 0, S: Math.PI / 2, W: Math.PI, N: -M
 const MIN_SCALE = 0.3
 const MAX_SCALE = 3
 
-export function PixiBoard({ grid, cellSize = 48, flows, sinkResults, onCellPaint }: BoardProps) {
+export function PixiBoard({ grid, cellSize = 48, flows, sinkResults, onCellPaint, onHoverCell }: BoardProps) {
   const hostRef = useRef<HTMLDivElement>(null)
   const appRef = useRef<Application | null>(null)
   const layerRef = useRef<Container | null>(null)
   const paintRef = useRef(onCellPaint)
   paintRef.current = onCellPaint
+  const hoverRef = useRef(onHoverCell)
+  hoverRef.current = onHoverCell
   const [ready, setReady] = useState(false)
   const [scale, setScale] = useState(1)
 
@@ -146,8 +149,9 @@ export function PixiBoard({ grid, cellSize = 48, flows, sinkResults, onCellPaint
   }
 
   function handleMove(e: React.MouseEvent) {
-    if (paintingRef.current === null) return
     const c = cellFromEvent(e)
+    hoverRef.current?.(c)
+    if (paintingRef.current === null) return
     if (!c) return
     const key = `${c.x},${c.y}`
     if (key === lastCellRef.current) return
@@ -158,6 +162,11 @@ export function PixiBoard({ grid, cellSize = 48, flows, sinkResults, onCellPaint
   function handleUp() {
     paintingRef.current = null
     lastCellRef.current = null
+  }
+
+  function handleLeave() {
+    handleUp()
+    hoverRef.current?.(null)
   }
 
   function handleWheel(e: React.WheelEvent) {
@@ -173,7 +182,7 @@ export function PixiBoard({ grid, cellSize = 48, flows, sinkResults, onCellPaint
       onMouseDown={handleDown}
       onMouseMove={handleMove}
       onMouseUp={handleUp}
-      onMouseLeave={handleUp}
+      onMouseLeave={handleLeave}
       onContextMenu={(e) => e.preventDefault()}
       onWheel={handleWheel}
     />
