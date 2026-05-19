@@ -117,7 +117,7 @@ export default function App() {
         <p className="desc">{puzzle.description}</p>
 
         <p className="hint">
-          Left-click drag: paint belts. Right-click: erase. Scroll: zoom. R: rotate (Shift+R reverse) · 1/2/3: tier · Space+drag or middle-click: pan.
+          Left-click drag: paint belts. Right-click: erase. Scroll: zoom. R: rotate (Shift+R reverse) · 1/2/3: tier · Space+drag or middle-click: pan · ghost preview shows next placement.
         </p>
 
         <h2>Direction</h2>
@@ -175,6 +175,7 @@ export default function App() {
             flows={flows}
             sinkResults={results ?? undefined}
             placementDir={dir}
+            placementTier={tier}
             onPlace={handlePlace}
             onHoverCell={(c) => {
               hoverRef.current = c
