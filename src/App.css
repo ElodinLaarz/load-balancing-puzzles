@@ -54,6 +54,22 @@ button.on { background: #2563eb; border-color: #2563eb; }
 .verdict.ok { background: #14532d; color: #d1fae5; }
 .verdict.bad { background: #7f1d1d; color: #fee2e2; }
 
+.sim-header {
+  display: flex; align-items: center; gap: 8px;
+}
+.sim-status {
+  display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: #5a6173;
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.4);
+  transition: background-color 120ms ease;
+}
+.sim-status-idle    { background: #5a6173; }
+.sim-status-pending { background: #f59e0b; }
+.sim-status-ok      { background: #22c55e; }
+.sim-status-fail    { background: #ef4444; }
+
 .sink-detail {
   margin-top: 10px; padding: 8px;
   background: #161b25; border-radius: 6px;
