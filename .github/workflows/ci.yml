@@ -19,3 +19,11 @@ jobs:
       - run: npm run typecheck
       - run: npm run coverage
       - run: npm run build
+      - name: Report bundle sizes
+        run: |
+          echo "## Bundle sizes" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          ls -lh dist/assets/*.js 2>/dev/null | awk '{print $5, $9}' >> "$GITHUB_STEP_SUMMARY" || echo "no js files" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "Total dist:" >> "$GITHUB_STEP_SUMMARY"
+          du -sh dist >> "$GITHUB_STEP_SUMMARY"
