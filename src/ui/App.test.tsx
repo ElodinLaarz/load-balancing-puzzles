@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import App from '../App'
@@ -19,6 +19,12 @@ function getButtonByExactText(text: string) {
 }
 
 describe('App UI smoke', () => {
+  // App reads window.location.hash at mount to restore shared solutions.
+  // jsdom shares window across tests, so earlier tests' grid edits leak hash
+  // state into later tests' initial puzzle selection — reset before each.
+  beforeEach(() => {
+    window.history.replaceState({}, '', window.location.pathname + window.location.search)
+  })
   it('renders sidebar with the first puzzle description', async () => {
     render(<App />)
     // Lazy PixiBoard suspends initially; sidebar text is rendered eagerly.
