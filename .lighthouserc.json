@@ -1,0 +1,20 @@
+{
+  "ci": {
+    "collect": {
+      "url": ["https://elodinlaarz.github.io/load-balancing-puzzles/"],
+      "numberOfRuns": 3
+    },
+    "assert": {
+      "assertions": {
+        "categories:performance": ["error", {"minScore": 0.7}],
+        "largest-contentful-paint": ["error", {"maxNumericValue": 4000}],
+        "total-blocking-time": ["error", {"maxNumericValue": 600}],
+        "resource-summary:script:size": ["error", {"maxNumericValue": 768000}]
+      }
+    },
+    "upload": {
+      "target": "filesystem",
+      "outputDir": ".lighthouseci"
+    }
+  }
+}
