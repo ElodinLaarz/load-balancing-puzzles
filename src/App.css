@@ -76,6 +76,19 @@ button.on { background: #2563eb; border-color: #2563eb; }
   font-size: 12px; font-family: ui-monospace, monospace;
 }
 
+.live-score {
+  display: grid; grid-template-columns: auto 1fr;
+  gap: 4px 16px; margin: 0;
+}
+.live-score dt {
+  color: #8a93a6; font-size: 12px;
+  text-transform: uppercase; letter-spacing: 0.06em;
+  align-self: center;
+}
+.live-score dd {
+  margin: 0; font-family: ui-monospace, monospace; font-size: 14px;
+}
+
 .board-wrap { flex: 1; padding: 16px; overflow: auto; }
 
 .board-loading {

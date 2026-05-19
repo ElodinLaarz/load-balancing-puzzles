@@ -150,6 +150,11 @@ export default function App() {
 
   const solved = useMemo(() => results && results.every((r) => r.ok), [results])
   const nextId = useMemo(() => nextPuzzleId(puzzleId, PUZZLE_IDS), [puzzleId])
+  // Live score updates per edit so the player sees the efficiency cost of
+  // their current grid before pressing Run / solving. scoreGrid is linear in
+  // cell count and the grids are small, so recomputing on every render is
+  // cheap.
+  const liveScore = useMemo(() => scoreGrid(grid), [grid])
 
   // Auto-run the sim after every grid edit (debounced). Cleanup cancels any
   // pending invocation so a rapid sequence of edits coalesces into a single
@@ -317,6 +322,16 @@ export default function App() {
             ))}
           </div>
         ))}
+
+        <h2>Score</h2>
+        <dl className="live-score">
+          <dt>Cells used</dt>
+          <dd>{liveScore.cellsUsed}</dd>
+          <dt>Tier cost</dt>
+          <dd>{liveScore.tierCost}</dd>
+          <dt>Total</dt>
+          <dd>{liveScore.total}</dd>
+        </dl>
 
         <footer>
           <p>Splitters, undergrounds, filters: coming soon.</p>
