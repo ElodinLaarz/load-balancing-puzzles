@@ -267,6 +267,18 @@ export default function App() {
           Left-click drag: paint belts. Right-click: erase. Scroll: zoom. R: rotate (Shift+R reverse) · 1/2/3: tier · Space+drag or middle-click: pan · ghost preview shows next placement · Ctrl+Z undo · Ctrl+Shift+Z redo.
         </p>
 
+        <h2>Sinks</h2>
+        <div className="sink-requirements">
+          {puzzle.sinks.map((s, i) => (
+            <div key={`${s.x},${s.y}`} className="sink-req">
+              <strong>Sink {i + 1}:</strong>{' '}
+              {Object.entries(s.require)
+                .map(([resource, rate]) => `${resource} @ ${rate}/s`)
+                .join(', ')}
+            </div>
+          ))}
+        </div>
+
         <h2>Direction</h2>
         <div className="row">
           {DIRS.map((d) => (
