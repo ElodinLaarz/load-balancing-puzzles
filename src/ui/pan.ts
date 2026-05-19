@@ -48,3 +48,29 @@ export function applyScroll(el: Element, offset: ScrollOffset): void {
   el.scrollLeft = offset.scrollLeft
   el.scrollTop = offset.scrollTop
 }
+
+/**
+ * Distance (in CSS pixels) a touch may travel before it is treated as a drag
+ * rather than a tap. Mirrors the platform's default click-slop tolerance and
+ * gives a comfortable buffer for finger jitter on touchscreens.
+ */
+export const TAP_THRESHOLD_PX = 8
+
+/**
+ * True when `current` has moved strictly more than `threshold` pixels (Euclidean)
+ * from `start`. Used by the touch handler to upgrade a held-tap into a pan once
+ * the finger has moved far enough to no longer count as a click.
+ *
+ * Note: comparison is strict (`>`), so a movement exactly equal to the threshold
+ * still counts as a tap. This matches DOM `click` semantics where small motion
+ * inside the slop radius is still routed as a click.
+ */
+export function exceedsTapThreshold(
+  start: { x: number; y: number },
+  current: { x: number; y: number },
+  threshold = TAP_THRESHOLD_PX,
+): boolean {
+  const dx = current.x - start.x
+  const dy = current.y - start.y
+  return Math.hypot(dx, dy) > threshold
+}
