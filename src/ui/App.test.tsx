@@ -3,6 +3,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import App from '../App'
 import { PUZZLES } from '../puzzles'
+import { STORAGE_KEY } from './highScores'
 
 // PixiBoard requires a real Canvas (not provided by jsdom) and pulls in pixi.js,
 // so stub it out for the UI render path. App lazy-imports './ui/PixiBoard' from
@@ -22,8 +23,11 @@ describe('App UI smoke', () => {
   // App reads window.location.hash at mount to restore shared solutions.
   // jsdom shares window across tests, so earlier tests' grid edits leak hash
   // state into later tests' initial puzzle selection — reset before each.
+  // Also clear localStorage so best-score state from other tests does not
+  // bleed into the puzzle-selector checkmark assertions below.
   beforeEach(() => {
     window.history.replaceState({}, '', window.location.pathname + window.location.search)
+    window.localStorage.clear()
   })
   it('renders sidebar with the first puzzle description', async () => {
     render(<App />)
@@ -120,5 +124,29 @@ describe('App UI smoke', () => {
     expect(
       within(tierRow2).getAllByRole('button').map((b) => b.textContent),
     ).toEqual(['yellow', 'red'])
+  })
+
+  // Regression for issue #6: when the player has any best score for a puzzle,
+  // the dropdown option for that puzzle should be visually marked as
+  // completed (currently a "✓ " prefix on the option label).
+  it('prepends a checkmark to puzzles that have a saved best score', () => {
+    // Seed a best-score record for the first puzzle BEFORE render — App reads
+    // localStorage during initial render to derive option labels.
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        '01-intro': { cellsUsed: 1, tierCost: 1, total: 2, ts: 1 },
+      }),
+    )
+    render(<App />)
+
+    const select = screen.getByRole('combobox') as HTMLSelectElement
+    const intro = Array.from(select.options).find((o) => o.value === '01-intro')
+    expect(intro, 'option for 01-intro should exist').toBeTruthy()
+    expect(intro!.textContent ?? '').toContain('✓')
+    // Puzzles without a best score must NOT receive the checkmark.
+    const second = Array.from(select.options).find((o) => o.value === PUZZLES[1].id)
+    expect(second, 'option for second puzzle should exist').toBeTruthy()
+    expect(second!.textContent ?? '').not.toContain('✓')
   })
 })
