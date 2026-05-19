@@ -244,10 +244,11 @@ export function PixiBoard({
   // pinch-zoom and must NOT trigger pan or paint side effects).
   //
   // Pinch-zoom and long-press erase are out of scope for this change.
+  // `null` means "no active single-finger gesture" — that covers both the
+  // idle state and the post-multi-touch cancelled state.
   const touchGestureRef = useRef<{
     start: { x: number; y: number; scrollLeft: number; scrollTop: number }
     moved: boolean
-    fingerCount: number
   } | null>(null)
 
   function placeAt(x: number, y: number, dir: Dir | null, button: number) {
@@ -278,7 +279,6 @@ export function PixiBoard({
         scrollTop: scroller.scrollTop,
       },
       moved: false,
-      fingerCount: 1,
     }
   }
 
