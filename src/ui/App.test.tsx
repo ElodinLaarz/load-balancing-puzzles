@@ -121,4 +121,62 @@ describe('App UI smoke', () => {
       within(tierRow2).getAllByRole('button').map((b) => b.textContent),
     ).toEqual(['yellow', 'red'])
   })
+
+  it('shows the Sinks section with required resources and rates for the initial puzzle', () => {
+    render(<App />)
+    // Puzzle 1 ("01-intro") has a single sink requiring 15/s of "iron".
+    const sinksHeading = screen.getByRole('heading', { name: 'Sinks' })
+    expect(sinksHeading).toBeInTheDocument()
+    // The requirements row immediately follows the heading. Scope the assertions
+    // to it so we don't collide with the post-sim "sink-detail" panel further
+    // down (which also mentions "iron").
+    const sinksList = sinksHeading.nextElementSibling as HTMLElement
+    expect(sinksList).toBeTruthy()
+    expect(within(sinksList).getByText(/Sink 1/)).toBeInTheDocument()
+    // Resource name + rate appear together in a single text node. The function
+    // matcher may match both the row and its container, so just assert that
+    // at least one element shows the expected combined text.
+    expect(
+      within(sinksList).getAllByText((_, el) =>
+        Boolean(el && /iron\s*@\s*15\/s/.test(el.textContent ?? '')),
+      ).length,
+    ).toBeGreaterThan(0)
+  })
+
+  it('updates the Sinks section when the puzzle changes', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    // Switch to puzzle 2 (02-two-to-four): 4 sinks, each requiring
+    // iron / coal / iron-plate / copper-plate at 3.75/s.
+    const select = screen.getByRole('combobox')
+    await user.selectOptions(select, PUZZLES[1].id)
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Sinks' })).toBeInTheDocument()
+    })
+    const sinksHeading = screen.getByRole('heading', { name: 'Sinks' })
+    // Scope to the list immediately after the heading to avoid colliding with
+    // the post-sim "sink-detail" panel which mirrors some resource names.
+    const sinksList = sinksHeading.nextElementSibling as HTMLElement
+    expect(sinksList).toBeTruthy()
+
+    // Four sinks listed (1..4).
+    expect(within(sinksList).getByText(/Sink 1/)).toBeInTheDocument()
+    expect(within(sinksList).getByText(/Sink 4/)).toBeInTheDocument()
+
+    // Each sink lists the four required resources at 3.75/s. Use a textContent
+    // matcher so we can assert resource-name + rate appear together.
+    const hasReqText = (regex: RegExp) => (_: string, el: Element | null) =>
+      Boolean(el && regex.test(el.textContent ?? ''))
+    expect(
+      within(sinksList).getAllByText(hasReqText(/iron-plate\s*@\s*3\.75\/s/)).length,
+    ).toBeGreaterThan(0)
+    expect(
+      within(sinksList).getAllByText(hasReqText(/copper-plate\s*@\s*3\.75\/s/)).length,
+    ).toBeGreaterThan(0)
+    expect(
+      within(sinksList).getAllByText(hasReqText(/coal\s*@\s*3\.75\/s/)).length,
+    ).toBeGreaterThan(0)
+  })
 })
