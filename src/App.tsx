@@ -254,11 +254,17 @@ export default function App() {
         <label className="block">
           Puzzle
           <select value={puzzleId} onChange={(e) => changePuzzle(e.target.value)}>
-            {PUZZLES.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.title}
-              </option>
-            ))}
+            {PUZZLES.map((p) => {
+              // Mark completed puzzles with a leading checkmark so players can
+              // see at a glance which ones already have a saved best score.
+              const isCompleted = getBest(p.id) != null
+              return (
+                <option key={p.id} value={p.id}>
+                  {isCompleted ? '✓ ' : ''}
+                  {p.title}
+                </option>
+              )
+            })}
           </select>
         </label>
         <p className="desc">{puzzle.description}</p>
