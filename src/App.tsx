@@ -151,6 +151,25 @@ export default function App() {
   const solved = useMemo(() => results && results.every((r) => r.ok), [results])
   const nextId = useMemo(() => nextPuzzleId(puzzleId, PUZZLE_IDS), [puzzleId])
 
+  // Pre-compute completion status for every puzzle once per relevant change
+  // instead of re-reading localStorage on every render frame. `getBest` does a
+  // synchronous getItem + JSON.parse, and the dropdown re-renders on every
+  // grid edit during a drag — without memoization that's O(N puzzles) parses
+  // per frame. The deps below are deliberately "external state signals"
+  // rather than values the body reads: `puzzleId` bumps on player navigation
+  // and `isNewBest`/`modalOpen` bump on the win path right after
+  // `saveIfBest`, which together cover every code path that mutates the
+  // underlying best-score store. eslint can't infer this because the data
+  // lives in localStorage, not React state.
+  const completedPuzzleIds = useMemo(() => {
+    const set = new Set<string>()
+    for (const p of PUZZLES) {
+      if (getBest(p.id) != null) set.add(p.id)
+    }
+    return set
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [puzzleId, isNewBest, modalOpen])
+
   // Auto-run the sim after every grid edit (debounced). Cleanup cancels any
   // pending invocation so a rapid sequence of edits coalesces into a single
   // run against the latest grid snapshot. Note: the 'pending' status itself
@@ -257,7 +276,9 @@ export default function App() {
             {PUZZLES.map((p) => {
               // Mark completed puzzles with a leading checkmark so players can
               // see at a glance which ones already have a saved best score.
-              const isCompleted = getBest(p.id) != null
+              // Membership lookup; the underlying storage read is memoized
+              // above in `completedPuzzleIds`.
+              const isCompleted = completedPuzzleIds.has(p.id)
               return (
                 <option key={p.id} value={p.id}>
                   {isCompleted ? '✓ ' : ''}
