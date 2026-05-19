@@ -39,12 +39,54 @@ const capFlow = (f: Flow, cap: number): Flow => {
   return s > cap && s > 0 ? scaleFlow(f, cap / s) : f
 }
 
-// Compute steady-state flow at every cell via fixed-point iteration.
-// Each iteration: for each producing cell, push its current outflow to the
-// downstream neighbor it points at. Splitters distribute their input across
-// both outputs.
-export function solveFlow(g: Grid, maxIter = 200): FlowGrid {
-  const flows: FlowGrid = new Array(g.w * g.h).fill(null).map(() => ({}))
+// Convergence tolerance for L∞ (max-cell-resource) delta between iterations.
+const EPSILON = 1e-6
+
+export type SolveStatus = 'converged' | 'oscillating' | 'max-iter'
+
+export interface SolveResult {
+  flows: FlowGrid
+  status: SolveStatus
+  iters: number
+}
+
+// L∞ norm of (next - prev) across every cell/resource pair.
+function maxDelta(prev: FlowGrid, next: FlowGrid): number {
+  let m = 0
+  for (let i = 0; i < prev.length; i++) {
+    const a = prev[i]
+    const b = next[i]
+    if (!a && !b) continue
+    // Compare union of keys; missing key counts as 0.
+    if (a) {
+      for (const k in a) {
+        const d = Math.abs((b?.[k] ?? 0) - a[k])
+        if (d > m) m = d
+      }
+    }
+    if (b) {
+      for (const k in b) {
+        if (a && k in a) continue
+        const d = Math.abs(b[k] - (a?.[k] ?? 0))
+        if (d > m) m = d
+      }
+    }
+  }
+  return m
+}
+
+// Compute steady-state flow at every cell via fixed-point iteration with early-exit
+// convergence detection. Each iteration: for each producing cell, push its current
+// outflow to the downstream neighbor it points at. Splitters (TODO) distribute their
+// input across both outputs.
+//
+// Termination:
+// - 'converged'   — L∞ delta < EPSILON for 2 consecutive iterations (steady state).
+// - 'oscillating' — exhausted maxIter; last 4 deltas all > EPSILON and show a
+//                   non-decaying pattern (max(last4) > 2 * min(last4)).
+// - 'max-iter'    — exhausted maxIter but doesn't fit the oscillation heuristic.
+export function solveFlowDetailed(g: Grid, maxIter = 200): SolveResult {
+  let flows: FlowGrid = new Array(g.w * g.h).fill(null).map(() => ({}))
 
   // Seed sources.
   for (let y = 0; y < g.h; y++) {
@@ -55,6 +97,9 @@ export function solveFlow(g: Grid, maxIter = 200): FlowGrid {
       }
     }
   }
+
+  let smallDeltaStreak = 0
+  const recentDeltas: number[] = []
 
   for (let iter = 0; iter < maxIter; iter++) {
     const next: FlowGrid = new Array(g.w * g.h).fill(null).map(() => ({}))
@@ -92,10 +137,38 @@ export function solveFlow(g: Grid, maxIter = 200): FlowGrid {
       }
     }
 
-    flows.splice(0, flows.length, ...next)
+    const delta = maxDelta(flows, next)
+    recentDeltas.push(delta)
+    if (recentDeltas.length > 4) recentDeltas.shift()
+
+    flows = next
+
+    if (delta < EPSILON) {
+      smallDeltaStreak++
+      if (smallDeltaStreak >= 2) {
+        return { flows, status: 'converged', iters: iter + 1 }
+      }
+    } else {
+      smallDeltaStreak = 0
+    }
   }
 
-  return flows
+  // Exhausted maxIter — classify.
+  // Oscillation heuristic: last 4 deltas all > EPSILON and non-decaying
+  // (max(last4) > 2 * min(last4) with min > EPSILON).
+  if (recentDeltas.length === 4) {
+    const mn = Math.min(...recentDeltas)
+    const mx = Math.max(...recentDeltas)
+    if (mn > EPSILON && mx > 2 * mn) {
+      return { flows, status: 'oscillating', iters: maxIter }
+    }
+  }
+  return { flows, status: 'max-iter', iters: maxIter }
+}
+
+// Back-compat wrapper: returns just the FlowGrid as before.
+export function solveFlow(g: Grid, maxIter = 200): FlowGrid {
+  return solveFlowDetailed(g, maxIter).flows
 }
 
 function acceptsFrom(c: Cell | null | undefined, incomingDir: Dir): boolean {

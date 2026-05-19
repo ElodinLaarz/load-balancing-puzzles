@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "test": "vitest",
     "test:run": "vitest run",
+    "bench": "vitest bench --run",
     "coverage": "vitest run --coverage",
     "typecheck": "tsc -b --noEmit"
   },
