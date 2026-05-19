@@ -1,0 +1,17 @@
+{
+  "id": "06-throughput-stretch",
+  "title": "Throughput Stretch",
+  "description": "Demand exactly matches the source rate at the lowest tier. Red belts are unlocked but wasted here — pick the right tier for the job.",
+  "width": 8,
+  "height": 4,
+  "allowedTiers": ["yellow", "red"],
+  "sources": [
+    { "x": 0, "y": 1, "dir": "E", "tier": "yellow", "feed": { "iron": 15 } }
+  ],
+  "sinks": [
+    { "x": 7, "y": 2, "dir": "E", "tier": "yellow", "require": { "iron": 15 }, "tolerance": 0.5 }
+  ],
+  "obstacles": [
+    { "x": 4, "y": 1 }
+  ]
+}

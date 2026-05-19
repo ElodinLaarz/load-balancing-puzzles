@@ -1,0 +1,16 @@
+{
+  "id": "04-twin-lanes",
+  "title": "Twin Lanes",
+  "description": "Two independent flows. Iron lane on top, coal lane on bottom. Keep the streams separate — don't let them mix.",
+  "width": 8,
+  "height": 6,
+  "allowedTiers": ["yellow"],
+  "sources": [
+    { "x": 0, "y": 1, "dir": "E", "tier": "yellow", "feed": { "iron": 15 } },
+    { "x": 0, "y": 4, "dir": "E", "tier": "yellow", "feed": { "coal": 15 } }
+  ],
+  "sinks": [
+    { "x": 7, "y": 1, "dir": "E", "tier": "yellow", "require": { "iron": 15 }, "tolerance": 0.5 },
+    { "x": 7, "y": 4, "dir": "E", "tier": "yellow", "require": { "coal": 15 }, "tolerance": 0.5 }
+  ]
+}

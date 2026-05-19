@@ -1,0 +1,19 @@
+{
+  "id": "05-tight-footprint",
+  "title": "Tight Footprint",
+  "description": "A 5x5 grid with a wall through the middle. Snake over the top (or under the bottom) to reach the sink. Teaches space-efficient routing.",
+  "width": 5,
+  "height": 5,
+  "allowedTiers": ["yellow"],
+  "sources": [
+    { "x": 0, "y": 2, "dir": "E", "tier": "yellow", "feed": { "iron": 15 } }
+  ],
+  "sinks": [
+    { "x": 4, "y": 2, "dir": "E", "tier": "yellow", "require": { "iron": 15 }, "tolerance": 0.5 }
+  ],
+  "obstacles": [
+    { "x": 2, "y": 1 },
+    { "x": 2, "y": 2 },
+    { "x": 2, "y": 3 }
+  ]
+}
