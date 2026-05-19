@@ -4,6 +4,7 @@ import { gridFromPuzzle, setCell } from './sim/grid'
 import { checkSinks, solveFlow, type FlowGrid, type SinkResult } from './sim/solve'
 import type { BeltTier, Cell, Dir } from './sim/types'
 import { idx } from './sim/types'
+import { tierForKey } from './ui/hotkeys'
 import './App.css'
 
 const PixiBoard = lazy(() => import('./ui/PixiBoard'))
@@ -63,6 +64,11 @@ export default function App() {
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return
+      const nextTier = tierForKey(e.key, allowedTiers)
+      if (nextTier) {
+        setTier(nextTier)
+        return
+      }
       if (e.key === 'r' || e.key === 'R') {
         const step = e.shiftKey ? DIRS.length - 1 : 1
         const rotate = (d: Dir) => DIRS[(DIRS.indexOf(d) + step) % DIRS.length]
@@ -91,7 +97,7 @@ export default function App() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [])
+  }, [allowedTiers])
 
   return (
     <div className="app">
@@ -111,7 +117,7 @@ export default function App() {
         <p className="desc">{puzzle.description}</p>
 
         <p className="hint">
-          Left-click drag: paint belts. Right-click: erase. Scroll: zoom. R: rotate (Shift+R reverse). Space+drag or middle-click: pan.
+          Left-click drag: paint belts. Right-click: erase. Scroll: zoom. R: rotate (Shift+R reverse) · 1/2/3: tier · Space+drag or middle-click: pan.
         </p>
 
         <h2>Direction</h2>
