@@ -45,11 +45,20 @@ export function PixiBoard({
   const appRef = useRef<Application | null>(null)
   const layerRef = useRef<Container | null>(null)
   const placeRef = useRef(onPlace)
-  placeRef.current = onPlace
   const hoverRef = useRef(onHoverCell)
-  hoverRef.current = onHoverCell
   const placementDirRef = useRef(placementDir)
-  placementDirRef.current = placementDir
+  // Keep refs pointed at the latest prop values. Effects run after commit and
+  // before any user-triggered DOM event handler fires, so the refs are always
+  // current by the time the mouse/wheel handlers below read them.
+  useEffect(() => {
+    placeRef.current = onPlace
+  }, [onPlace])
+  useEffect(() => {
+    hoverRef.current = onHoverCell
+  }, [onHoverCell])
+  useEffect(() => {
+    placementDirRef.current = placementDir
+  }, [placementDir])
   const [ready, setReady] = useState(false)
   const [scale, setScale] = useState(1)
 
