@@ -1,0 +1,14 @@
+{
+  "id": "01-intro",
+  "title": "Straight Shot",
+  "description": "Single iron source to single sink. Connect them with belts.",
+  "width": 10,
+  "height": 6,
+  "allowedTiers": ["yellow"],
+  "sources": [
+    { "x": 0, "y": 3, "dir": "E", "tier": "yellow", "feed": { "iron": 15 } }
+  ],
+  "sinks": [
+    { "x": 9, "y": 3, "dir": "E", "tier": "yellow", "require": { "iron": 15 }, "tolerance": 0.5 }
+  ]
+}

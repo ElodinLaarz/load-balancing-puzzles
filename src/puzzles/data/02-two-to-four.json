@@ -1,0 +1,18 @@
+{
+  "id": "02-two-to-four",
+  "title": "2 Red to 4 Yellow",
+  "description": "Two red belts of mixed iron/coal and iron-plate/copper-plate. Output four yellow belts each evenly balanced across all four resources.",
+  "width": 14,
+  "height": 10,
+  "allowedTiers": ["yellow", "red"],
+  "sources": [
+    { "x": 0, "y": 3, "dir": "E", "tier": "red", "feed": { "iron": 15, "coal": 15 } },
+    { "x": 0, "y": 6, "dir": "E", "tier": "red", "feed": { "iron-plate": 15, "copper-plate": 15 } }
+  ],
+  "sinks": [
+    { "x": 13, "y": 2, "dir": "E", "tier": "yellow", "require": { "iron": 3.75, "coal": 3.75, "iron-plate": 3.75, "copper-plate": 3.75 }, "tolerance": 0.5 },
+    { "x": 13, "y": 4, "dir": "E", "tier": "yellow", "require": { "iron": 3.75, "coal": 3.75, "iron-plate": 3.75, "copper-plate": 3.75 }, "tolerance": 0.5 },
+    { "x": 13, "y": 6, "dir": "E", "tier": "yellow", "require": { "iron": 3.75, "coal": 3.75, "iron-plate": 3.75, "copper-plate": 3.75 }, "tolerance": 0.5 },
+    { "x": 13, "y": 8, "dir": "E", "tier": "yellow", "require": { "iron": 3.75, "coal": 3.75, "iron-plate": 3.75, "copper-plate": 3.75 }, "tolerance": 0.5 }
+  ]
+}
