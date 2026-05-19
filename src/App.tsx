@@ -62,13 +62,22 @@ export default function App() {
         const rotate = (d: Dir) => DIRS[(DIRS.indexOf(d) + step) % DIRS.length]
         const hover = hoverRef.current
         if (hover) {
+          let rotated = false
+          let newDir: Dir | null = null
           setGrid((g) => {
             const c = g.cells[idx(g, hover.x, hover.y)]
             if (!c || c.kind === 'source' || c.kind === 'sink') return g
-            return setCell(g, hover.x, hover.y, { ...c, dir: rotate(c.dir) })
+            rotated = true
+            newDir = rotate(c.dir)
+            return setCell(g, hover.x, hover.y, { ...c, dir: newDir })
           })
-          setFlows(null)
-          setResults(null)
+          if (rotated) {
+            if (newDir) setDir(newDir)
+            setFlows(null)
+            setResults(null)
+          } else {
+            setDir(rotate)
+          }
         } else {
           setDir(rotate)
         }
