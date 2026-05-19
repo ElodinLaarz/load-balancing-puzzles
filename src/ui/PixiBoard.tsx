@@ -362,3 +362,5 @@ function tierColor(t: Cell['tier']) {
       return 0xca8a04
   }
 }
+
+export default PixiBoard
